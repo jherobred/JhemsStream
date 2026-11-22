@@ -139,11 +139,18 @@ function renderScenes() {
   $("#nameProgram").textContent = S.program || "None";
   $("#namePreview").textContent = S.preview || "None";
 }
+/* Transitions hook: when a JhemsStream stinger is selected, transitions.js runs it (video over both scenes, cut at its point) */
+const customTrans = () => window.Transitions?.isCustom?.();
 async function pickScene(name) {
   if (S.studio) await call("SetCurrentPreviewScene", { sceneName: name });
+  else if (customTrans()) await Transitions.toScene(name);
   else await call("SetCurrentProgramScene", { sceneName: name });
 }
-async function take() { if (S.studio && S.preview !== S.program) await call("TriggerStudioModeTransition"); }
+async function take() {
+  if (!S.studio || S.preview === S.program) return;
+  if (customTrans()) return Transitions.toScene(S.preview);
+  await call("TriggerStudioModeTransition");
+}
 async function cut() {
   if (!S.studio) return;
   const cur = (await call("GetCurrentSceneTransition")).transitionName;
@@ -642,7 +649,7 @@ $("#dlgHelp").addEventListener("close", () => store.set("helpSeen", true));
 $$("[data-help]").forEach(b => b.addEventListener("click", openHelp));
 
 /* ---------- shared API for editor.js and setup.js ---------- */
-window.JS = { obs, S, call, h, $, $$, store, log, toast, icon, pickScene, refreshScenes, refreshInputs, connect, onReady: f => readyFns.push(f), openExt };
+window.JS = { obs, S, call, h, $, $$, store, log, toast, icon, pickScene, refreshScenes, refreshInputs, connect, onReady: f => readyFns.push(f), openExt, runTransitionProgress: ms => runBunting(ms) };
 
 /* ---------- window buttons in our own title bar (desktop app has no Windows title bar) ---------- */
 if (TAURI?.window) {

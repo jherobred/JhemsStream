@@ -1,0 +1,30 @@
+[
+  {
+    "file": "panel-sweep.webm",
+    "name": "Panel Sweep",
+    "cutPointMs": 600,
+    "durationMs": 1200,
+    "sound": "panel-sweep.ogg"
+  },
+  {
+    "file": "diagonal-blades.webm",
+    "name": "Diagonal Blades",
+    "cutPointMs": 550,
+    "durationMs": 1100,
+    "sound": "diagonal-blades.ogg"
+  },
+  {
+    "file": "center-iris.webm",
+    "name": "Center Iris",
+    "cutPointMs": 550,
+    "durationMs": 1100,
+    "sound": "center-iris.ogg"
+  },
+  {
+    "file": "glitch-slice.webm",
+    "name": "Glitch Slice",
+    "cutPointMs": 500,
+    "durationMs": 1000,
+    "sound": "glitch-slice.ogg"
+  }
+]

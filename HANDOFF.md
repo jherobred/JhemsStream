@@ -57,3 +57,10 @@ powershell -ExecutionPolicy Bypass -File scripts\release.ps1 -Publish -Notes "wh
 ## Chat history
 
 `.claude-chat/` holds the Claude Code transcript (`.jsonl`, one JSON event per line) of the session that built v0.1 to v0.2.x, plus a zip export. It is gitignored because it is large and contains local paths.
+
+## Status 2026-11-23 ~02:20 (work in progress, not released)
+
+- Done: built-in stingers (src-tauri/resources/stingers, Rust stinger_dir/stinger_manifest, 13 extra OBS transitions on Set up OBS), instant replay (web/replay.js, tested against OBS).
+- Unfinished: web/transitions.js stinger engine + manager (its helper was stopped mid-work; check whether the file exists and works). app.js already calls Transitions.isCustom()/toScene(name) and exports JS.runTransitionProgress.
+- Known: window.Music is undefined (Music is a top-level const); replay.js uses typeof Music.
+- Next: finish/test transitions.js, rebuild (npm run build or scripts/release.ps1), test in the real app, bump to 0.3.0 in tauri.conf.json, Cargo.toml, package.json, publish, copy installer to releases\.

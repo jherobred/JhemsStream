@@ -10,6 +10,8 @@
 <link rel="stylesheet" href="app.css">
 <link rel="stylesheet" href="music.css">
 <link rel="stylesheet" href="editor.css">
+<link rel="stylesheet" href="transitions.css">
+<link rel="stylesheet" href="replay.css">
 </head>
 <body data-role="director">
 
@@ -54,6 +56,7 @@
       <button id="btnCut" class="btn cut" title="C">Cut</button>
       <div id="tbar" class="tbar" role="slider" tabindex="0" aria-label="T-bar: drag down to transition by hand" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="tbar-track"></div><div class="tbar-handle"></div></div>
       <label class="field compact"><span>Transition</span><select id="selTrans"></select></label>
+      <button class="btn small" id="btnTransManage" type="button">Transitions…</button>
       <label class="field compact"><span>Duration (ms)</span><input id="inDur" type="number" min="50" max="20000" step="50"></label>
     </div>
     <div class="mon mon-program">
@@ -201,6 +204,7 @@
         <button id="btnRec" class="btn director">Start recording</button>
         <button id="btnStudio" class="btn" aria-pressed="true">Studio Mode</button>
         <button class="btn" id="btnSettings2">Settings</button>
+        <div id="replayBox" class="replay-box"></div>
         <div class="quality-box">
           <span class="muted small">Stream quality</span>
           <span id="qualitySummary" class="small">Loading from OBS</span>
@@ -249,6 +253,8 @@
 <script src="app.js"></script>
 <script src="musicui.js"></script>
 <script src="quality.js"></script>
+<script src="transitions.js"></script>
+<script src="replay.js"></script>
 <script src="settings.js"></script>
 <script src="editor.js"></script>
 <script src="setup.js"></script>

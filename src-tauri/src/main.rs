@@ -115,8 +115,8 @@ fn random_password() -> String {
     (0..16).map(|_| C[r.gen_range(0..C.len())] as char).collect()
 }
 
-/// Adds Swipe, Slide and Luma Wipe to the active scene collection. OBS must be closed.
-fn add_transitions() -> Result<(), String> {
+/// Adds JhemsStream's transitions to the active scene collection. OBS must be closed.
+fn add_transitions(stinger_dir: Option<&Path>) -> Result<(), String> {
     let base = appdata_obs();
     let mut file = "Untitled".to_string();
     for ini in ["user.ini", "global.ini"] {
@@ -128,30 +128,103 @@ fn add_transitions() -> Result<(), String> {
         }
     }
     let path = base.join("basic").join("scenes").join(format!("{file}.json"));
-    let Ok(text) = std::fs::read_to_string(&path) else { return Ok(()) }; // first run: OBS creates it
+    if !path.exists() {
+        return Ok(()); // first run: OBS creates it
+    }
+    add_transitions_to(&path, stinger_dir)
+}
+
+/// Idempotent by name: only transitions the collection doesn't already have are added, after a backup.
+fn add_transitions_to(path: &Path, stinger_dir: Option<&Path>) -> Result<(), String> {
+    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let mut doc: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
     let list = doc["transitions"].as_array().cloned().unwrap_or_default();
-    let mut out = list.clone();
-    for (name, id, settings) in [
+    let luma = |img: &str| json!({"luma_image": img, "luma_softness": 0.1, "luma_invert": false});
+    let mut wanted = vec![
         ("Swipe", "swipe_transition", json!({"direction": "left"})),
+        ("Swipe Up", "swipe_transition", json!({"direction": "up"})),
         ("Slide", "slide_transition", json!({"direction": "left"})),
+        ("Slide Right", "slide_transition", json!({"direction": "right"})),
+        ("Fade to Black", "fade_to_color_transition", json!({"color": 4278190080u32, "switch_point": 50})),
         ("Luma Wipe", "wipe_transition", json!({})),
-    ] {
-        if !list.iter().any(|t| t["id"] == id) {
+        ("Luma Wipe Iris", "wipe_transition", luma("iris.png")),
+        ("Luma Wipe Diagonal", "wipe_transition", luma("linear-topleft.png")),
+        ("Luma Wipe Barn Door", "wipe_transition", luma("barndoor-h.png")),
+    ];
+    // the bundled stingers also show up as native OBS Stinger transitions (tp_type 0 = time in ms)
+    let manifest: Vec<Value> = stinger_dir
+        .and_then(|d| std::fs::read_to_string(d.join("stingers.json")).ok())
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    let stingers: Vec<(String, Value)> = manifest
+        .iter()
+        .filter_map(|m| {
+            let dir = stinger_dir?;
+            let file = dir.join(m["file"].as_str()?);
+            file.exists().then(|| {
+                (format!("Stinger {}", m["name"].as_str().unwrap_or("")),
+                 json!({"path": file.to_string_lossy(), "transition_point": m["cutPointMs"], "tp_type": 0}))
+            })
+        })
+        .collect();
+    for (name, settings) in &stingers {
+        wanted.push((name.as_str(), "obs_stinger_transition", settings.clone()));
+    }
+    let mut out = list.clone();
+    for (name, id, settings) in wanted {
+        if !list.iter().any(|t| t["name"] == name) {
             out.push(json!({"name": name, "id": id, "settings": settings}));
         }
     }
     if out.len() == list.len() {
         return Ok(());
     }
-    std::fs::copy(&path, path.with_extension("json.jhemsstream-backup")).map_err(|e| e.to_string())?;
+    std::fs::copy(path, path.with_extension("json.jhemsstream-backup")).map_err(|e| e.to_string())?;
     doc["transitions"] = Value::Array(out);
-    std::fs::write(&path, serde_json::to_string_pretty(&doc).unwrap()).map_err(|e| e.to_string())
+    std::fs::write(path, serde_json::to_string_pretty(&doc).unwrap()).map_err(|e| e.to_string())
+}
+
+/// Stinger videos ship as app resources; OBS needs a stable path that survives updates,
+/// so they're copied to %APPDATA%\JhemsStream\stingers (only files that are missing or changed).
+fn stingers_ready(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    use tauri::Manager;
+    let dst = PathBuf::from(std::env::var("APPDATA").unwrap_or_default()).join("JhemsStream").join("stingers");
+    let src = app
+        .path()
+        .resolve("stingers", tauri::path::BaseDirectory::Resource)
+        .ok()
+        .filter(|p| p.join("stingers.json").exists())
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources").join("stingers")); // dev run
+    std::fs::create_dir_all(&dst).map_err(|e| e.to_string())?;
+    let entries = std::fs::read_dir(&src).map_err(|e| format!("No stingers at {}: {e}", src.display()))?;
+    for e in entries.flatten() {
+        let (from, to) = (e.path(), dst.join(e.file_name()));
+        if !from.is_file() {
+            continue;
+        }
+        let size = |p: &Path| std::fs::metadata(p).map(|m| m.len()).ok();
+        if size(&from) != size(&to) {
+            std::fs::copy(&from, &to).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(dst)
+}
+
+#[tauri::command]
+async fn stinger_dir(app: tauri::AppHandle) -> Result<String, String> {
+    Ok(stingers_ready(&app)?.to_string_lossy().into())
+}
+
+#[tauri::command]
+async fn stinger_manifest(app: tauri::AppHandle) -> Result<Value, String> {
+    let dir = stingers_ready(&app)?;
+    let text = std::fs::read_to_string(dir.join("stingers.json")).map_err(|e| e.to_string())?;
+    serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
 /// Turns on obs-websocket (with a password) and adds transitions, restarting OBS if it is open.
 #[tauri::command]
-async fn obs_setup() -> Result<ObsInfo, String> {
+async fn obs_setup(app: tauri::AppHandle) -> Result<ObsInfo, String> {
     obs_exe().ok_or("OBS is not installed")?;
     close_obs()?;
     let p = ws_config_path();
@@ -172,7 +245,7 @@ async fn obs_setup() -> Result<ObsInfo, String> {
     }
     std::fs::create_dir_all(p.parent().unwrap()).map_err(|e| e.to_string())?;
     std::fs::write(&p, serde_json::to_string_pretty(&cfg).unwrap()).map_err(|e| e.to_string())?;
-    let _ = add_transitions();
+    let _ = add_transitions(stingers_ready(&app).ok().as_deref());
     obs_launch().await?;
     Ok(obs_info().await)
 }
@@ -371,6 +444,23 @@ async fn media_key(key: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use tauri::async_runtime::block_on;
+    // Runs add_transitions_to on a scratch copy given by $SCENE_TEST_JSON (never the live collection), twice for idempotence.
+    #[test]
+    fn transitions_added_once() {
+        let Ok(p) = std::env::var("SCENE_TEST_JSON") else { return };
+        let p = std::path::PathBuf::from(p);
+        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources").join("stingers");
+        super::add_transitions_to(&p, Some(&dir)).unwrap();
+        let first: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+        super::add_transitions_to(&p, Some(&dir)).unwrap();
+        let second: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+        let t = first["transitions"].as_array().unwrap();
+        for x in t {
+            println!("{} | {} | {}", x["name"], x["id"], x["settings"]);
+        }
+        assert_eq!(t.len(), second["transitions"].as_array().unwrap().len(), "second run must add nothing");
+        assert!(t.iter().any(|x| x["id"] == "obs_stinger_transition"));
+    }
     // Safe smoke test: reads OBS info, lists $AUDIO_TEST_DIR, lists app audio sessions. Never touches OBS.
     #[test]
     fn smoke() {
@@ -399,7 +489,8 @@ fn main() {
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             obs_info, obs_launch, obs_setup, obs_install,
-            list_audio, read_audio, app_audio_list, app_audio_set, media_key, gpu_names
+            list_audio, read_audio, app_audio_list, app_audio_set, media_key, gpu_names,
+            stinger_dir, stinger_manifest
         ])
         .run(tauri::generate_context!())
         .expect("error while running JhemsStream");

@@ -1,0 +1,18 @@
+/* Transitions manager (stingers). Tokens come from app.css. */
+dialog.trans-dlg{max-width:min(720px,calc(100% - 32px))}
+.trans-sub{font-size:var(--fs-small);font-weight:600;color:var(--muted);margin:var(--s4) 0 var(--s1)}
+.trans-sub:first-child{margin-top:0}
+.trans-list{display:flex;flex-direction:column}
+.trans-row{display:flex;align-items:center;gap:var(--s3);padding:var(--s2) var(--s1);border-bottom:1px solid var(--rule)}
+.trans-row.is-use{background:var(--accent-soft)}
+.trans-row b{display:inline-flex;align-items:center;gap:var(--s2)}
+.trans-acts{flex-wrap:nowrap}
+.trans-tag{font-size:11px;font-weight:500;padding:0 var(--s2);border-radius:var(--r-tag);background:var(--raised);color:var(--muted)}
+.trans-audio{border:0;padding:0;margin:0 0 var(--s2)}
+.trans-audio legend{font-size:var(--fs-small);color:var(--muted);padding:0;margin-bottom:var(--s1)}
+.trans-radio{min-height:28px;gap:var(--s2)}
+.trans-sep{padding:var(--s2) 0 var(--s2) var(--s4);border-left:0;margin-bottom:var(--s2)}
+.trans-sep .row input{flex:1}
+dialog.trans-dlg .field .row input{flex:1;min-width:0}
+/* hidden YouTube player for transition sounds: rendered (players stall when display:none), but out of sight */
+.trans-yt{position:fixed;left:0;bottom:0;width:200px;height:200px;opacity:.01;pointer-events:none;z-index:-1}
