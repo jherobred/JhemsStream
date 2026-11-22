@@ -28,7 +28,7 @@ $name = "JhemsStream_${ver}_x64-setup.exe"          # no spaces, so the GitHub a
 Copy-Item $exe.FullName "$out\$name"
 Copy-Item "$($exe.FullName).sig" "$out\$name.sig"
 
-[ordered]@{
+$manifest = [ordered]@{
   version   = $ver
   notes     = $Notes
   pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
@@ -36,7 +36,9 @@ Copy-Item "$($exe.FullName).sig" "$out\$name.sig"
     signature = (Get-Content "$out\$name.sig" -Raw).Trim()
     url       = "https://github.com/jherobred/JhemsStream/releases/download/v$ver/$name"
   } }
-} | ConvertTo-Json -Depth 5 | Set-Content "$out\latest.json" -Encoding utf8
+} | ConvertTo-Json -Depth 5
+# no byte-order mark: the updater's JSON parser rejects one
+[IO.File]::WriteAllText("$out\latest.json", $manifest, (New-Object Text.UTF8Encoding $false))
 
 Get-ChildItem $out | Select-Object Name, Length | Format-Table -AutoSize
 
