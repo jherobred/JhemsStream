@@ -1,16 +1,16 @@
 // Renders coderain.html to PNG frames in headless Edge, then encodes a VP9 alpha webm with ffmpeg.
-// node scripts/stinger/render.mjs <out.webm> [title]
+// node scripts/stinger/render.mjs <out.webm> [title] [dir: right|left|top|bottom|center]
 import { spawn, execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const [out, title = ""] = process.argv.slice(2);
+const [out, title = "", dir = "right"] = process.argv.slice(2);
 const FPS = 60, DUR = 1.75, PORT = 9344 + Math.floor(Math.random() * 500);
 const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const FFMPEG = process.env.FFMPEG || "ffmpeg";
-const page = pathToFileURL(resolve("scripts/stinger/coderain.html")).href + (title ? "?title=" + encodeURIComponent(title) : "");
+const page = pathToFileURL(resolve("scripts/stinger/coderain.html")).href + "?" + new URLSearchParams({ title, dir });
 const prof = mkdtempSync(join(tmpdir(), "edge-")), frames = mkdtempSync(join(tmpdir(), "frames-"));
 const edge = spawn(EDGE, ["--headless=new", `--remote-debugging-port=${PORT}`, `--user-data-dir=${prof}`, "--window-size=1920,1080", "--allow-file-access-from-files", page]);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -30,6 +30,6 @@ for (let i = 0; i < N; i++) {
 const cov = []; for (const t of [0.70, 0.76, 0.80, 0.84, 0.88, 0.92]) cov.push(`${t}s ${(await ev(`coverage(${Math.round(t * FPS)}, ${FPS})`) * 100).toFixed(2)}%`);
 console.log("coverage", cov.join("  "));
 ws.close(); edge.kill();
-execFileSync(FFMPEG, ["-y", "-v", "error", "-framerate", String(FPS), "-i", join(frames, "f%04d.png"), "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "0", "-crf", "33", "-row-mt", "1", "-auto-alt-ref", "0", "-metadata:s:v:0", "alpha_mode=1", out], { stdio: "inherit" });
+execFileSync(FFMPEG, ["-y", "-v", "error", "-framerate", String(FPS), "-i", join(frames, "f%04d.png"), "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "6000k", "-maxrate", "8000k", "-bufsize", "12000k", "-row-mt", "1", "-auto-alt-ref", "0", "-metadata:s:v:0", "alpha_mode=1", out], { stdio: "inherit" });
 console.log("wrote", out, N, "frames from", frames);
 try { rmSync(prof, { recursive: true, force: true }); } catch {}

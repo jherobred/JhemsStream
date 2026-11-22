@@ -12,6 +12,12 @@ const W = 1920, H = 1080, TILE = 60, COLS = W / TILE, ROWS = H / TILE, F = 1500;
 const IN_SPREAD = 0.40, IN_DUR = 0.30, OUT_START = 0.92, OUT_SPREAD = 0.38, OUT_DUR = 0.36;
 const params = new URLSearchParams(location.search);
 const TITLE = params.get("title") || "";
+// the side the wall arrives from: right (default), left, top, bottom, or center (bursts outward)
+const DIR = params.get("dir") || "right";
+const MAXD = Math.hypot(W / 2, H / 2);
+const keyOf = (x, y) => ({ right: 1 - x / W, left: x / W, top: y / H, bottom: 1 - y / H }[DIR] ?? Math.hypot(x - W / 2, y - H / 2) / MAXD);
+const fromVec = (x, y) => { if (DIR === "center") { const d = Math.hypot(x - W / 2, y - H / 2) || 1; return [-(x - W / 2) / d, -(y - H / 2) / d]; }
+  return { right: [1, 0], left: [-1, 0], top: [0, -1], bottom: [0, 1] }[DIR]; };
 const cv = document.getElementById("c"), ctx = cv.getContext("2d");
 const mk = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
 const rain = mk(W, H), rc = rain.getContext("2d");
@@ -69,12 +75,13 @@ function drawTex(t) {
 /* cubes */
 const cubes = [];
 for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
-  const x = c * TILE + TILE / 2, y = r * TILE + TILE / 2;
+  const x = c * TILE + TILE / 2, y = r * TILE + TILE / 2, k = keyOf(x, y), [ux, uy] = fromVec(x, y);
+  const along = 120 + rnd() * 260, across = (rnd() - 0.5) * 260;
   cubes.push({ c, r, x, y,
-    tin: (1 - x / W) * IN_SPREAD + rnd() * 0.06,
-    tout: OUT_START + (x / W) * OUT_SPREAD + rnd() * 0.07,
+    tin: k * IN_SPREAD + rnd() * 0.06,
+    tout: OUT_START + (1 - k) * OUT_SPREAD + rnd() * 0.07,
     ax: (rnd() - 0.5) * 3, ay: 1.5 + rnd() * 2, az: (rnd() - 0.5) * 1.5,
-    dx: 120 + rnd() * 260, dy: (rnd() - 0.5) * 260, zin: 500 + rnd() * 500,
+    dx: ux * along - uy * across, dy: uy * along + ux * across, zin: 500 + rnd() * 500,
     ox: (rnd() - 0.5) * 300, oy: -120 - rnd() * 300, zout: 1200 + rnd() * 1600 });
 }
 const S = TILE / 2;
@@ -139,10 +146,19 @@ function drawCube(cb, st) {
 function path(q) { ctx.beginPath(); ctx.moveTo(q[0][0], q[0][1]); for (let i = 1; i < 4; i++) ctx.lineTo(q[i][0], q[i][1]); ctx.closePath(); }
 
 /* falling code just ahead of the incoming wall, and trailing behind the outgoing one */
-function drawBand(x0, x1, alpha) {
+function drawBand(kOpaque, kClear, alpha) {
   bc.globalCompositeOperation = "source-over"; bc.clearRect(0, 0, W, H); bc.drawImage(rain, 0, 0);
-  const g = bc.createLinearGradient(x0, 0, x1, 0);
-  g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, `rgba(0,0,0,${alpha})`);
+  let g;
+  if (DIR === "center") {
+    const [ro, rc2] = [Math.max(0, kOpaque) * MAXD, Math.max(0, kClear) * MAXD];
+    const flip = ro > rc2;
+    g = bc.createRadialGradient(W / 2, H / 2, Math.min(ro, rc2), W / 2, H / 2, Math.max(ro, rc2) + 0.1);
+    g.addColorStop(flip ? 1 : 0, `rgba(0,0,0,${alpha})`); g.addColorStop(flip ? 0 : 1, "rgba(0,0,0,0)");
+  } else {
+    const pt = k => ({ right: [W * (1 - k), 0], left: [W * k, 0], top: [0, H * k], bottom: [0, H * (1 - k)] }[DIR]);
+    g = bc.createLinearGradient(...pt(kOpaque), ...pt(kClear));
+    g.addColorStop(0, `rgba(0,0,0,${alpha})`); g.addColorStop(1, "rgba(0,0,0,0)");
+  }
   bc.globalCompositeOperation = "destination-in"; bc.fillStyle = g; bc.fillRect(0, 0, W, H);
   ctx.drawImage(band, 0, 0);
 }
@@ -150,15 +166,16 @@ function drawBand(x0, x1, alpha) {
 function frame(t) {
   drawRain(t); drawTex(t);
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W, H);
-  // entering wall front moves right -> left; leaving front moves left -> right
-  const fin = W * (1 - t / IN_SPREAD);
-  if (t < IN_SPREAD + 0.12) drawBand(fin - 420, fin, clamp(1 - (t - IN_SPREAD) / 0.12));
+  // code falls just ahead of the incoming wall's front (in key units: 0 = first to arrive)
+  const fk = t / IN_SPREAD;
+  if (t < IN_SPREAD + 0.12) drawBand(fk, fk + 0.22, clamp(1 - (t - IN_SPREAD) / 0.12));
   const live = [];
   for (const cb of cubes) { const st = cubeState(cb, t); if (st) live.push([cb, st]); }
   live.sort((a, b) => a[1].z - b[1].z);
   for (const [cb, st] of live) drawCube(cb, st);
   const tl = t - OUT_START;
-  if (tl > 0 && tl < OUT_SPREAD + 0.25) { const fx = W * (tl / OUT_SPREAD); drawBand(fx + 380, fx - 40, clamp(1 - (tl - OUT_SPREAD) / 0.25) * 0.9); }
+  // and trails over the revealed scene behind the leaving wall
+  if (tl > 0 && tl < OUT_SPREAD + 0.25) { const fo = 1 - tl / OUT_SPREAD; drawBand(fo + 0.02, fo - 0.2, clamp(1 - (tl - OUT_SPREAD) / 0.25) * 0.9); }
   // soft bloom
   gc.clearRect(0, 0, glow.width, glow.height); gc.filter = "blur(6px)"; gc.drawImage(cv, 0, 0, glow.width, glow.height); gc.filter = "none";
   ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = 0.4; ctx.drawImage(glow, 0, 0, W, H); ctx.restore();

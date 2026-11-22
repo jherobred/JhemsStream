@@ -128,7 +128,17 @@ body:not(.connected) .app-only{display:none!important}
 .brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--fs-title);font-weight:600;padding:0 var(--s2) 0 var(--s1)}
 .brand-mark{width:16px;height:16px;border-radius:50%;background:var(--text);position:relative}
 .brand-mark::after{content:"";position:absolute;inset:5px;border-radius:50%;background:var(--accent)}
-.quick{display:flex;gap:2px;flex-wrap:wrap}
+.quick{display:flex;gap:2px;flex-wrap:nowrap;min-width:0}
+.link-chip,.bar-btn{gap:6px}
+.link-chip .ic,.bar-btn .ic{width:15px;height:15px;opacity:.85}
+.menubar{min-width:0;overflow:hidden}
+/* narrow windows (Windows Snap halves): the bar keeps one row, links and buttons drop to icons */
+@media (max-width:1400px){
+  .menubar .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .link-chip,.bar-btn{padding:0 7px;min-width:30px;justify-content:center}
+  .role select{max-width:150px}
+}
+@media (max-width:760px){.brand{font-size:0;gap:0}.role select{max-width:110px}}
 .role{display:flex;align-items:center;gap:var(--s1);font-size:var(--fs-small);color:var(--muted)}
 .role select{min-height:var(--h-small)}
 .banner{background:var(--warn-soft);font-weight:600;padding:var(--s2) var(--s4);border-bottom:1px solid var(--border)}
@@ -175,9 +185,6 @@ body.quick .studio-only,body:not(.quick) .quick-only{display:none!important}
 .docks{flex:1;display:grid;grid-template-rows:minmax(0,1fr);grid-template-columns:minmax(180px,1fr) minmax(230px,1.25fr) minmax(250px,1.4fr) minmax(230px,1.2fr) minmax(150px,.6fr);gap:var(--gap);min-height:var(--docks-h)}
 @media (max-width:1240px){.docks{grid-template-columns:repeat(auto-fill,minmax(300px,1fr));grid-template-rows:none;flex:none}.dock{height:var(--docks-h)}}
 @media (max-width:760px){
-  .menubar{flex-wrap:wrap}
-  .menubar .quick{order:5;width:100%;flex-wrap:nowrap;overflow-x:auto}
-  .link-chip{white-space:nowrap}
   .statusbar{flex-wrap:wrap;padding:var(--s1) var(--s2)}
   .stats{flex-wrap:wrap;gap:var(--s1) var(--s3)}
   .docks{grid-template-columns:minmax(0,1fr)}
@@ -322,11 +329,17 @@ dialog::backdrop{background:var(--scrim)}
 .ed-list{display:flex;flex-direction:column}
 .ed-item{padding:var(--s2) 0;border-bottom:1px solid var(--rule)}
 .ed-crop{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:var(--s1) var(--s3);align-items:center;margin-top:var(--s2);font-size:var(--fs-small)}
-.help{padding:var(--s5)}
-.help h3{font-size:17px;margin:0 0 var(--s2)}
-.help p,.help li{line-height:1.55}
-.help ol{padding-left:var(--s5)}
-.help .dlg-foot{padding:var(--s3) 0 0;border:0}
+/* guided tour: the dialog is a transparent full-window layer; the spot dims everything but the target */
+dialog.tour{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:hidden;animation:none}
+dialog.tour::backdrop{background:transparent}
+.tour-spot{position:fixed;border-radius:var(--r-card);box-shadow:0 0 0 9999px var(--scrim);outline:2px solid var(--accent);transition:left var(--dur-short) var(--ease),top var(--dur-short) var(--ease),width var(--dur-short) var(--ease),height var(--dur-short) var(--ease);pointer-events:none}
+.tour-spot.none{left:50%!important;top:50%!important;width:0!important;height:0!important;outline:0}
+.tour-card{position:fixed;width:min(380px,calc(100vw - 32px));padding:var(--s4);background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);box-shadow:var(--float-shadow);transition:left var(--dur-short) var(--ease),top var(--dur-short) var(--ease)}
+.tour-card h3{font-size:16px;margin:0 0 var(--s2)}
+.tour-card p,.tour-card li{line-height:1.55;margin:0 0 var(--s2)}
+.tour-card ol{padding-left:var(--s5);margin:0}
+.tour-card .dlg-foot{padding:var(--s3) 0 0;border:0;gap:var(--s2);align-items:center}
+@media (prefers-reduced-motion:reduce){.tour-spot,.tour-card{transition:none}}
 .dots{display:flex;gap:var(--s1);margin:var(--s4) 0 var(--s1)}
 .dots i{width:16px;height:4px;border-radius:2px;background:var(--raised)}
 .dots i.on{background:var(--accent)}

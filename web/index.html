@@ -24,16 +24,16 @@
   <nav id="quickLinks" class="quick app-only" aria-label="Quick links"></nav>
   <span class="spacer" data-tauri-drag-region></span>
   <div id="updateSlot"></div>
-  <label class="role app-only">Role
-    <select id="role">
+  <label class="role app-only"><span class="lbl">Role</span>
+    <select id="role" aria-label="Role">
       <option value="director">Director (everything)</option>
       <option value="switcher">Switcher</option>
       <option value="audio">Audio and music</option>
       <option value="scores">Scores</option>
     </select>
   </label>
-  <button class="btn ghost small app-only" data-help>Help</button>
-  <button class="btn ghost small app-only" id="btnSettings">Settings</button>
+  <button class="btn ghost small app-only bar-btn" data-help title="Help" aria-label="Help"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7M12 17h.01"/></svg></span><span class="lbl">Help</span></button>
+  <button class="btn ghost small app-only bar-btn" id="btnSettings" title="Settings" aria-label="Settings"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></span><span class="lbl">Settings</span></button>
   <div class="winctl" id="winctl" hidden>
     <button type="button" class="wbtn" id="wMin" aria-label="Minimize" title="Minimize"><svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M0 5h10" stroke="currentColor" stroke-width="1"/></svg></button>
     <button type="button" class="wbtn" id="wMax" aria-label="Maximize" title="Maximize"><svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><rect x=".5" y=".5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/></svg></button>
@@ -243,10 +243,13 @@
   </div>
 </dialog>
 
-<dialog id="dlgHelp" class="help">
-  <div id="helpBody"></div>
-  <div class="dots" id="helpDots"></div>
-  <div class="dlg-foot"><span class="spacer"></span><button class="btn" id="helpBack">Back</button><button class="btn primary" id="helpNext">Next</button></div>
+<dialog id="dlgHelp" class="tour" aria-labelledby="helpBody">
+  <div id="helpSpot" class="tour-spot none" aria-hidden="true"></div>
+  <div id="helpCard" class="tour-card">
+    <div id="helpBody"></div>
+    <div class="dots" id="helpDots" aria-hidden="true"></div>
+    <div class="dlg-foot"><span id="helpCount" class="muted small"></span><span class="spacer"></span><button class="btn ghost" id="helpSkip" type="button">Skip</button><button class="btn" id="helpBack" type="button">Back</button><button class="btn primary" id="helpNext" type="button">Next</button></div>
+  </div>
 </dialog>
 
 <script src="vendor/obs-ws.global.js"></script>

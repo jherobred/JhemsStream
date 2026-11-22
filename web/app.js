@@ -31,7 +31,12 @@ const ICONS = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   ext: '<path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/>', wand: '<path d="M4 20 15 9M14 4v2M19 9h2M17.5 5.5 19 4M9 5l.5 1.5M18 13l1.5.5"/>',
   shield: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/>', check: '<path d="m5 12 5 5L20 7"/>',
-  folder: '<path d="M3 6h6l2 2h10v11H3z"/>', shuffle: '<path d="M3 6h4l10 12h4M3 18h4l3-3.5M14 9.5 17 6h4M18 3l3 3-3 3M18 15l3 3-3 3"/>',
+  folder: '<path d="M3 6h6l2 2h10v11H3z"/>',
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
+  live: '<path d="M4 7h11v10H4zM15 10l5-3v10l-5-3"/>', obs: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="7.5" r="2.5"/><circle cx="8" cy="14.5" r="2.5"/><circle cx="16" cy="14.5" r="2.5"/>',
+  chat: '<path d="M4 5h16v11H9l-5 4z"/>', gauge: '<path d="M4 18a9 9 0 1 1 16 0M12 14l4-5"/>', note: '<path d="M9 18V5l11-2v13M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zM20 16a3 3 0 1 1-3-3 3 3 0 0 1 3 3z"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7M12 17h.01"/>',
+  gear: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>', shuffle: '<path d="M3 6h4l10 12h4M3 18h4l3-3.5M14 9.5 17 6h4M18 3l3 3-3 3M18 15l3 3-3 3"/>',
 };
 const icon = (n, cls = "ic") => h("span", { class: cls, "aria-hidden": "true", html: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n] || ""}</svg>` });
 
@@ -172,16 +177,24 @@ async function shot(name, w) {
   return (await obs.call("GetSourceScreenshot", { sourceName: name, imageFormat: "jpg", imageWidth: w, imageCompressionQuality: 62 })).imageData;
 }
 async function swapImg(img, src) { const t = new Image(); t.src = src; try { await t.decode(); } catch {} img.src = src; }
-let bigBusy = false, gridBusy = false, gridIdx = 0;
-setInterval(async () => {
-  if (!S.connected || bigBusy || document.hidden) return; bigBusy = true;
-  try {
-    const jobs = [];
-    if (S.program) jobs.push(shot(S.program, 800).then(d => swapImg($("#imgProgram"), d)));
-    if (S.studio && S.preview) jobs.push(shot(S.preview, 720).then(d => swapImg($("#imgPreview"), d)));
-    await Promise.all(jobs);
-  } catch {} finally { bigBusy = false; }
-}, 220);
+let gridBusy = false, gridIdx = 0;
+/* each monitor runs its own loop and asks for the next frame as soon as one arrives (capped near 30 fps),
+   at the size it is drawn, so neither waits on the other. ponytail: still screenshots over the websocket;
+   true video would need OBS's virtual camera, which other apps (Discord) could pick up. */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function monitorLoop(img, name) {
+  for (;;) {
+    const n = name();
+    if (!S.connected || document.hidden || !n || !img.offsetWidth) { await sleep(250); continue; }
+    const t0 = performance.now();
+    const w = Math.round(Math.min(960, Math.max(320, img.offsetWidth * devicePixelRatio)) / 16) * 16;
+    try { swapImg(img, (await obs.call("GetSourceScreenshot", { sourceName: n, imageFormat: "jpg", imageWidth: w, imageCompressionQuality: 55 })).imageData); }
+    catch { await sleep(400); }
+    await sleep(Math.max(0, 33 - (performance.now() - t0)));
+  }
+}
+monitorLoop($("#imgProgram"), () => S.program);
+monitorLoop($("#imgPreview"), () => S.studio ? S.preview : null);
 setInterval(async () => {
   if (!S.connected || gridBusy || document.hidden || !S.scenes.length) return; gridBusy = true;
   try {
@@ -674,25 +687,61 @@ $("#btnTake").addEventListener("click", take);
 $("#btnCut").addEventListener("click", cut);
 
 /* ---------- onboarding ---------- */
+/* ---------- guided tour: spotlights each part of the console in turn ---------- */
 const HELP = [
-  ["Welcome to JhemsStream", `<p>JhemsStream is a companion for OBS. OBS does the video and sends it to Facebook. JhemsStream puts the controls your crew needs in one window.</p><p>Up to three people can help at once: open JhemsStream on another laptop and connect to the streaming PC.</p>`],
-  ["Preview, then Transition", `<p>Each row in <b>Scenes</b> is something viewers can see. Click one to load it into <b>Preview</b> (green). Check it, then press <b>Transition</b> or Space to send it to <b>Program</b> (red), which is what viewers see.</p><p>Drag the <b>T-bar</b> to transition by hand. Keys 1 to 9 pick scenes, C cuts.</p>`],
-  ["Showing the game from Discord", `<p>On the streaming PC, open the player’s Discord stream, press <b>Pop Out</b>, then full screen in the pop-out. In JhemsStream press <b>Edit</b> on Main Game, then <b>Add source</b>, then <b>Discord screen share</b>. Its sound comes in too.</p>`],
-  ["Music that flows", `<p>In <b>Music</b>, paste YouTube or Spotify links or add a folder of songs. Songs crossfade on their own, the music fades down gradually on gameplay scenes, and it ducks when casters talk.</p><p>Songs that look like label releases get a <b>Likely copyrighted</b> tag. They still play, but Facebook can mute or stop a stream over them.</p>`],
-  ["Going live", `<ol><li><b>Stream key</b> tab: <b>Get stream key from Facebook</b>, paste it, <b>Save key to OBS</b>.</li><li>Go through the <b>Checklist</b>.</li><li>Put <b>Starting Soon</b> on Program, press <b>Start streaming</b>, then press <b>Go live</b> in Facebook too.</li></ol>`],
-  ["Roles and settings", `<p>Pick a <b>Role</b> at the top. Switcher, Audio and music, and Scores hide streaming, the stream key and delete buttons, so helpers can’t end the stream by accident.</p><p><b>Settings</b> has the dark or light theme and compact view. Reopen this guide with <b>Help</b>.</p>`],
+  [null, "Welcome to JhemsStream", `<p>OBS makes the video and sends it to Facebook. JhemsStream puts the crew's controls in one window.</p><p>This tour points at each part. Use the arrow keys or the buttons. Esc closes it, and <b>Help</b> in the top bar reopens it.</p>`],
+  [".dock-scenes", "1. Pick a scene", `<p>Each row is something viewers can see. Click one to load it into <b>Preview</b>. Keys <b>1</b> to <b>9</b> do the same.</p><p><b>Starter scenes</b> makes Starting Soon, Main Game, Casters, Break and Ending. <b>SITE look</b> dresses them in Ready Player SITE graphics.</p>`],
+  [".mon-preview", "2. Check Preview", `<p>Green means <b>next</b>. Nothing here is on stream yet, so you can fix it safely.</p>`],
+  [".takecol", "3. Transition", `<p>Press <b>Transition</b> or <b>Space</b> to send Preview to air. <b>C</b> cuts instantly. Drag the T-bar to do it by hand.</p><p>Pick the effect here. The <b>Code Rain</b> stingers are the SITE ones.</p>`],
+  [".mon-program", "4. Program is live", `<p>Red means <b>on stream</b>. This is exactly what Facebook viewers see.</p>`],
+  [".dock-mixer", "Audio", `<p>Mic and game levels. Keep the meters in the green and yellow. <b>Clean up mics</b> removes hiss, <b>Limit loud spikes</b> stops shouting from clipping.</p>`],
+  [".dock-music", "Music", `<p>Paste YouTube or Spotify links or add a folder. Songs crossfade, fade down on gameplay scenes and duck when casters talk. Set how loud each scene is under <b>Music level per scene</b>.</p>`],
+  ["#scoreBox", "Scores", `<p>Type team names and press + or &minus;. The scoreboard on stream updates right away.</p>`],
+  ["#replayBox", "Instant replay", `<p>Turn on <b>Buffer</b> before going live. Press <b>Instant replay</b> or <b>R</b>: the clip loads into <b>Preview</b> so you can watch it first. Press <b>Air replay</b> (or R again) to show it. It returns to the game when it ends.</p>`],
+  [".dock-controls .controls", "Going live", `<ol><li><b>Stream key</b> tab: get the key from Facebook and save it to OBS.</li><li>Tick through the <b>Checklist</b>.</li><li>Put Starting Soon on Program, press <b>Start streaming</b>, then <b>Go live</b> in Facebook.</li></ol>`],
+  ["label.role", "Roles", `<p>Helpers pick Switcher, Audio and music, or Scores. Those roles hide streaming and delete buttons so nobody ends the stream by accident.</p>`],
 ];
 let helpStep = 0;
+const visibleEl = sel => { const el = sel && document.querySelector(sel); const r = el?.getBoundingClientRect(); return r && r.width > 0 && r.height > 0 ? el : null; };
+function placeHelp() {
+  const [sel] = HELP[helpStep], el = visibleEl(sel), spot = $("#helpSpot"), card = $("#helpCard");
+  const pad = 6, gap = 14, vw = innerWidth, vh = innerHeight;
+  if (!el) { spot.classList.add("none"); card.style.left = Math.max(16, (vw - card.offsetWidth) / 2) + "px"; card.style.top = Math.max(16, (vh - card.offsetHeight) / 2) + "px"; return; }
+  el.scrollIntoView({ block: "nearest", inline: "nearest" });
+  const r = el.getBoundingClientRect();
+  spot.classList.remove("none");
+  Object.assign(spot.style, { left: r.left - pad + "px", top: r.top - pad + "px", width: r.width + 2 * pad + "px", height: r.height + 2 * pad + "px" });
+  const cw = card.offsetWidth, ch = card.offsetHeight;
+  // below, above, right, left of the target, whichever fits first
+  const spots = [[r.left, r.bottom + gap], [r.left, r.top - gap - ch], [r.right + gap, r.top], [r.left - gap - cw, r.top]];
+  const fits = ([x, y]) => y >= 8 && y + ch <= vh - 8 && x + cw >= 0 && x <= vw;
+  const [x, y] = spots.find(fits) || [(vw - cw) / 2, vh - ch - 16];
+  card.style.left = Math.min(Math.max(8, x), vw - cw - 8) + "px";
+  card.style.top = Math.min(Math.max(8, y), vh - ch - 8) + "px";
+}
 function renderHelp() {
-  const [title, body] = HELP[helpStep];
+  const [, title, body] = HELP[helpStep];
   $("#helpBody").innerHTML = `<h3>${title}</h3>${body}`;
   $("#helpDots").innerHTML = HELP.map((_, i) => `<i class="${i === helpStep ? "on" : ""}"></i>`).join("");
+  $("#helpCount").textContent = `${helpStep + 1} of ${HELP.length}`;
   $("#helpBack").disabled = helpStep === 0;
   $("#helpNext").textContent = helpStep === HELP.length - 1 ? "Done" : "Next";
+  requestAnimationFrame(placeHelp);
 }
-function openHelp() { helpStep = 0; renderHelp(); $("#dlgHelp").showModal(); }
-$("#helpBack").addEventListener("click", () => { helpStep--; renderHelp(); });
-$("#helpNext").addEventListener("click", () => { if (helpStep < HELP.length - 1) { helpStep++; renderHelp(); } else $("#dlgHelp").close(); });
+/* steps whose part is hidden for this role are skipped in either direction */
+function helpGo(d) {
+  let n = helpStep + d;
+  while (n > 0 && n < HELP.length && HELP[n][0] && !visibleEl(HELP[n][0])) n += d;
+  if (n < 0) return;
+  if (n >= HELP.length) return $("#dlgHelp").close();
+  helpStep = n; renderHelp();
+}
+function openHelp() { helpStep = 0; $("#dlgHelp").showModal(); renderHelp(); }
+$("#helpBack").addEventListener("click", () => helpGo(-1));
+$("#helpNext").addEventListener("click", () => helpGo(1));
+$("#helpSkip").addEventListener("click", () => $("#dlgHelp").close());
+$("#dlgHelp").addEventListener("keydown", e => { if (e.key === "ArrowRight") { e.preventDefault(); helpGo(1); } else if (e.key === "ArrowLeft") { e.preventDefault(); helpGo(-1); } });
+addEventListener("resize", () => { if ($("#dlgHelp").open) placeHelp(); });
 $("#dlgHelp").addEventListener("close", () => store.set("helpSeen", true));
 $$("[data-help]").forEach(b => b.addEventListener("click", openHelp));
 

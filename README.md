@@ -4,6 +4,8 @@ A companion control panel for OBS, built for small volunteer crews running a liv
 
 OBS does the video and sends it to Facebook (or YouTube, or Twitch). JhemsStream gives your crew Studio Mode switching, music that crossfades by itself, a scoreboard and one-click OBS setup.
 
+![JhemsStream console: Preview and Program side by side, scenes, mixer, music, scores and controls](docs/screens/console.png)
+
 ## Download
 
 Get `JhemsStream_<version>_x64-setup.exe` from [Releases](https://github.com/jherobred/JhemsStream/releases/latest) and run it. After that, the app updates itself: when a new version is out, an **Update** button appears in the menu bar.
@@ -17,10 +19,28 @@ Get `JhemsStream_<version>_x64-setup.exe` from [Releases](https://github.com/jhe
 - **Copyright tagging**: every song is tagged as likely copyrighted, royalty-free source, or unknown, from its tags or channel. You can still play anything. Only Facebook decides what gets muted.
 - **Audio tools**: mixer with live meters, fade-mute, headphone monitoring, one-click mic cleanup (noise removal, compressor, limiter) and a limiter against loud spikes.
 - **Scoreboard**: team names, scores, swap sides.
+- **SITE look**: one button dresses the starter screens and scoreboard in themed on-stream graphics (browser sources that follow the text the crew edits). Press it again to undo.
+- **Stingers**: Code Rain transitions (a wall of voxel cubes behind falling code) from the right, left, top, bottom or bursting from the center, a titled variant, and an Instant Replay stinger, plus four simpler ones.
+- **Instant replay**: OBS's replay buffer saves the last seconds, the clip loads into Preview so you can watch it first, then **Air replay** shows it and the app returns to the game when it ends.
 - **Facebook Live**: a button that opens Live Producer, a field for the stream key that goes straight into OBS. JhemsStream never saves the key.
 - **Crew roles**: Director, Switcher, Audio and music, Scores. Helpers on other laptops connect to the same OBS, and only the Director can start or stop the stream.
 - **Settings**: dark (default, like OBS), light or system theme, compact view, and everything else in one searchable window.
-- Pre-stream checklist, a six-step guide for new crew members, status bar with dropped frames, bitrate, CPU and FPS.
+- Pre-stream checklist, a guided tour that points at each part of the console, status bar with dropped frames, bitrate, CPU and FPS.
+
+## Screens
+
+| Guided tour | Snapped to half the screen |
+|---|---|
+| ![The guided tour spotlighting the Transition controls](docs/screens/tour.png) | ![The console snapped to half a 1080p screen, menu bar as icons](docs/screens/snapped-half.png) |
+
+On-stream graphics from **SITE look** (scoreboard and a title card over the event background):
+
+![Scoreboard and title card overlays](docs/screens/overlays.jpg)
+
+Code Rain stinger, from cover to reveal, and the from-bottom, burst and Instant Replay versions:
+
+![Code Rain stinger frames](docs/screens/stinger-code-rain.jpg)
+![Code Rain directions and the Instant Replay stinger](docs/screens/stinger-directions.jpg)
 
 ## Using it from another laptop
 

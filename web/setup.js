@@ -192,20 +192,21 @@ window.Setup = (() => {
     const { h, $ } = J();
     const box = $("#quickLinks"); if (!box) return;
     box.textContent = "";
-    const chip = (label, fn, title) => h("button", { class: "link-chip", type: "button", title: title || label, onclick: () => fn().catch(() => {}) }, label);
+    // icon + label; the label hides when the window is narrow, so the name stays in title and aria-label
+    const chip = (ic, label, fn, title) => h("button", { class: "link-chip", type: "button", title: title || label, "aria-label": label, onclick: () => fn().catch(() => {}) }, J().icon(ic), h("span", { class: "lbl" }, label));
     box.append(...[
-      chip("Facebook Live", () => open("https://www.facebook.com/live/producer"), "Open Facebook Live Producer to get the stream key"),
-      desktop ? chip("Open OBS", async () => { await invoke("obs_launch"); J().toast("Opening OBS", "ok"); }) : null,
-      chip("Discord", async () => {
+      chip("live", "Facebook Live", () => open("https://www.facebook.com/live/producer"), "Open Facebook Live Producer to get the stream key"),
+      desktop ? chip("obs", "Open OBS", async () => { await invoke("obs_launch"); J().toast("Opening OBS", "ok"); }) : null,
+      chip("chat", "Discord", async () => {
         if (!desktop) return open("https://discord.com/app");
         try { await T.opener.openUrl("discord://"); } catch { await open("https://discord.com/app"); }
       }),
-      chip("Speed test", () => open("https://fast.com"), "Check upload speed (fast.com → Show more info)"),
-      desktop ? chip("Recordings", async () => {
+      chip("gauge", "Speed test", () => open("https://fast.com"), "Check upload speed (fast.com → Show more info)"),
+      desktop ? chip("folder", "Recordings", async () => {
         const r = await J().call("GetRecordDirectory");
         await T.opener.openPath(r.recordDirectory);
       }, "Open the folder where OBS saves recordings") : null,
-      chip("Free music", () => open("https://www.facebook.com/sound/collection"), "Facebook Sound Collection: music made for Facebook videos")].filter(Boolean));
+      chip("note", "Free music", () => open("https://www.facebook.com/sound/collection"), "Facebook Sound Collection: music made for Facebook videos")].filter(Boolean));
   }
 
   /* ---------- updater ---------- */
@@ -225,7 +226,7 @@ window.Setup = (() => {
     const { h, $ } = J();
     const slot = $("#updateSlot"); if (!slot) return;
     slot.textContent = "";
-    if (!u) { slot.append(h("button", { class: "btn ghost small", type: "button", onclick: () => checkUpdate(false) }, "Check for updates")); return; }
+    if (!u) { slot.append(h("button", { class: "btn ghost small bar-btn", type: "button", title: "Check for updates", "aria-label": "Check for updates", onclick: () => checkUpdate(false) }, J().icon("refresh"), h("span", { class: "lbl" }, "Check for updates"))); return; }
     slot.append(h("button", { class: "btn primary small", type: "button", onclick: install_update }, `Update to v${u.version}`));
   }
   async function install_update() {

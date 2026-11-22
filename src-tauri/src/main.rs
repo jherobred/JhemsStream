@@ -210,6 +210,15 @@ fn stingers_ready(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(dst)
 }
 
+/// A folder for OBS replays and recordings that Windows Controlled folder access doesn't guard
+/// (it blocks OBS's muxer from Videos and Documents): %USERPROFILE%\JhemsStream Recordings.
+#[tauri::command]
+async fn safe_record_dir() -> Result<String, String> {
+    let d = PathBuf::from(std::env::var("USERPROFILE").map_err(|e| e.to_string())?).join("JhemsStream Recordings");
+    std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
+    Ok(d.to_string_lossy().into())
+}
+
 #[tauri::command]
 async fn stinger_dir(app: tauri::AppHandle) -> Result<String, String> {
     Ok(stingers_ready(&app)?.to_string_lossy().into())
@@ -490,7 +499,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             obs_info, obs_launch, obs_setup, obs_install,
             list_audio, read_audio, app_audio_list, app_audio_set, media_key, gpu_names,
-            stinger_dir, stinger_manifest
+            stinger_dir, stinger_manifest, safe_record_dir
         ])
         .run(tauri::generate_context!())
         .expect("error while running JhemsStream");

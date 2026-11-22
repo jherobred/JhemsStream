@@ -13,3 +13,13 @@
 .rb-list{display:flex;flex-direction:column;gap:2px;margin-top:var(--s1)}
 .rb-item{display:flex;align-items:center;gap:var(--s1)}
 .rb-item span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rb-row{display:flex;gap:var(--s1);align-items:stretch}
+.rb-row .rb-go{flex:1}
+.rb-go.air{background:var(--live);border-color:var(--live);color:var(--on-air)}
+.rb-note{margin:0}
+.rb-warn{display:flex;flex-direction:column;gap:var(--s1);padding:var(--s2);border-radius:var(--r-control);background:var(--air-soft);color:var(--air-ink)}
+.rb-warn p{margin:0}
+.rb-row{flex-wrap:wrap}
+.rb-row .rb-go{flex:1 1 100%}
+.rb-row .btn.small{flex:1}
+.rb-head > .grow{white-space:nowrap;min-width:max-content}

@@ -1,7 +1,35 @@
 [
   {
     "file": "code-rain.webm",
-    "name": "Code Rain",
+    "name": "Code Rain (from right)",
+    "cutPointMs": 840,
+    "durationMs": 1750,
+    "sound": "code-rain.ogg"
+  },
+  {
+    "file": "code-rain-left.webm",
+    "name": "Code Rain (from left)",
+    "cutPointMs": 840,
+    "durationMs": 1750,
+    "sound": "code-rain.ogg"
+  },
+  {
+    "file": "code-rain-down.webm",
+    "name": "Code Rain (from top)",
+    "cutPointMs": 840,
+    "durationMs": 1750,
+    "sound": "code-rain.ogg"
+  },
+  {
+    "file": "code-rain-up.webm",
+    "name": "Code Rain (from bottom)",
+    "cutPointMs": 840,
+    "durationMs": 1750,
+    "sound": "code-rain.ogg"
+  },
+  {
+    "file": "code-rain-burst.webm",
+    "name": "Code Rain (burst)",
     "cutPointMs": 840,
     "durationMs": 1750,
     "sound": "code-rain.ogg"
@@ -9,6 +37,13 @@
   {
     "file": "code-rain-site.webm",
     "name": "Code Rain (Ready Player SITE)",
+    "cutPointMs": 840,
+    "durationMs": 1750,
+    "sound": "code-rain.ogg"
+  },
+  {
+    "file": "instant-replay.webm",
+    "name": "Instant Replay",
     "cutPointMs": 840,
     "durationMs": 1750,
     "sound": "code-rain.ogg"
