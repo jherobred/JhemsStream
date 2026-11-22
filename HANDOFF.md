@@ -58,7 +58,11 @@ powershell -ExecutionPolicy Bypass -File scripts\release.ps1 -Publish -Notes "wh
 
 `.claude-chat/` holds the Claude Code transcript (`.jsonl`, one JSON event per line) of the session that built v0.1 to v0.2.x, plus a zip export. It is gitignored because it is large and contains local paths.
 
-## Status 2026-11-23 ~02:20 (work in progress, not released)
+## Status 2026-11-23 ~02:45: v0.3.0 released
+
+Stingers (web/transitions.js) tested in the real app: Panel Sweep visible mid-sweep, its sound metered at -8.7 dB, cut ~15 ms after the 600 ms cut point. Gotcha: when JhemsStream is launched from inside Claude Desktop (an MSIX app), its writes to %APPDATA% are redirected into Claude's package LocalCache, so OBS can't see the copied stingers. Launched normally (Start menu), it writes the real %APPDATA%\JhemsStream\stingers and OBS reads it. Test from a non-virtualized folder (Temp) when driving the app from an agent.
+
+### Earlier note (02:20, superseded)
 
 - Done: built-in stingers (src-tauri/resources/stingers, Rust stinger_dir/stinger_manifest, 13 extra OBS transitions on Set up OBS), instant replay (web/replay.js, tested against OBS).
 - Unfinished: web/transitions.js stinger engine + manager (its helper was stopped mid-work; check whether the file exists and works). app.js already calls Transitions.isCustom()/toScene(name) and exports JS.runTransitionProgress.
