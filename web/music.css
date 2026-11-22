@@ -6,10 +6,15 @@
 
 /* copyright tags: text and colour both carry the meaning */
 .mtag{display:inline-flex;align-items:center;font-size:var(--fs-small);font-weight:600;padding:0 var(--s2);min-height:20px;border-radius:var(--r-tag);white-space:nowrap;cursor:help}
-.mtag-copyrighted{background:var(--air-soft);color:var(--air-ink)}
+/* red stays reserved for live, recording and Program, so a likely-copyrighted song is a warn tag */
+.mtag-copyrighted{background:var(--warn-soft);color:var(--text)}
 .mtag-free{background:var(--next-soft);color:var(--next-ink)}
 .mtag-unknown{background:var(--raised);color:var(--muted)}
-.mtag-err{background:var(--warn-soft);color:var(--warn);cursor:default}
+.mtag-err{background:var(--raised);color:var(--text);cursor:default}
+
+/* flat dock, like the Audio Mixer: rows separated by rules, no nested boxes */
+.dock-music .nowplaying{background:none;border:0;border-radius:0;border-bottom:1px solid var(--rule);padding:0 0 var(--s3);margin-bottom:var(--s2)}
+.dock-music .np-title{margin-bottom:2px}
 
 /* the YouTube players stay rendered and visible while a YouTube song plays */
 .yt-stage{position:relative;width:100%;max-width:356px;aspect-ratio:16/9;margin-top:var(--s2);border-radius:var(--r-control);overflow:hidden;background:var(--screen)}
@@ -25,10 +30,10 @@
 .m-opts{margin-bottom:var(--s2)}
 
 .q-head{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);min-height:var(--h-small);font-size:var(--fs-small);color:var(--muted)}
-.queue{list-style:none;margin:0 0 var(--s2);padding:0;border:1px solid var(--border);border-radius:var(--r-control);max-height:300px;overflow:auto}
+.queue{list-style:none;margin:0 0 var(--s2);padding:0;border-top:1px solid var(--rule);max-height:360px;overflow:auto}
 .q-empty{padding:var(--s3);font-size:var(--fs-small);color:var(--muted)}
-.qrow{display:grid;grid-template-columns:32px minmax(0,1fr) auto;grid-template-areas:"num main dur" "num acts acts";gap:var(--s1) var(--s2);align-items:start;padding:var(--s2);border-bottom:1px solid var(--rule)}
-.qrow:last-child{border-bottom:0}
+.qrow{display:grid;grid-template-columns:32px minmax(0,1fr) auto;grid-template-areas:"num main dur" "num acts acts" "cue cue cue";gap:var(--s1) var(--s2);align-items:start;padding:var(--s2) var(--s1);border-bottom:1px solid var(--rule)}
+.qrow:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .qrow.current{background:var(--accent-soft)}
 .qrow.broken .q-title{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--faint)}
 .q-num{grid-area:num;font-size:var(--fs-small);font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;padding-top:2px}
@@ -40,3 +45,22 @@
 .q-dur{grid-area:dur;font-size:var(--fs-small);color:var(--muted);font-variant-numeric:tabular-nums}
 .q-acts{grid-area:acts;display:flex;gap:var(--s1)}
 .q-acts .btn svg{display:block}
+.q-acts .btn[aria-expanded=true]{background:var(--accent-strong);border-color:var(--accent-strong);color:var(--on-accent)}
+.q-acts .btn.is-off{opacity:.45;cursor:not-allowed}
+
+/* cue panel: start and end points over a scrub bar, private pre-listen, send to stream */
+.cue{grid-area:cue;display:flex;flex-direction:column;gap:var(--s2);padding-top:var(--s2);margin-top:var(--s1);border-top:1px solid var(--rule)}
+.cue-track{position:relative;padding:var(--s2) 0}
+.cue-range{display:block}
+.cue-mark{position:absolute;top:0;bottom:0;width:2px;pointer-events:none}
+.cue-mark.in{left:var(--cue-in);background:var(--next)}
+.cue-mark.out{left:var(--cue-out);background:var(--warn);transform:translateX(-2px)}
+.cue-now{color:var(--muted);font-variant-numeric:tabular-nums}
+.cue-line{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1)}
+.cue-lbl{display:inline-flex;align-items:center;gap:var(--s2);font-size:var(--fs-small);color:var(--muted);margin-right:var(--s1)}
+.cue-t{width:72px;font-variant-numeric:tabular-nums}
+.cue-listen.on{background:var(--accent-strong);border-color:var(--accent-strong);color:var(--on-accent)}
+.cue-note{margin:0;color:var(--muted)}
+.cue-note:empty{display:none}
+.cue-note.warn{color:var(--warn)}
+.cue-note.bad{color:var(--text);background:var(--warn-soft);padding:var(--s1) var(--s2);border-radius:var(--r-tag)}

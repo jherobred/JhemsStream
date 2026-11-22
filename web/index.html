@@ -9,21 +9,20 @@
 <title>JhemsStream</title>
 <link rel="stylesheet" href="app.css">
 <link rel="stylesheet" href="music.css">
+<link rel="stylesheet" href="editor.css">
 </head>
 <body data-role="director">
 
 <div id="banner" class="banner" role="alert" hidden></div>
 <div id="toasts" class="toasts" aria-live="polite"></div>
 
-<section id="connect" class="connect"></section>
-
-<div id="app" class="appshell" hidden>
-<header class="menubar">
-  <h1 class="brand"><span class="brand-mark" aria-hidden="true"></span>JhemsStream</h1>
-  <nav id="quickLinks" class="quick" aria-label="Quick links"></nav>
-  <span class="spacer"></span>
+<!-- one bar for the app and the window: drag it to move, double-click to maximize -->
+<header class="menubar" data-tauri-drag-region>
+  <h1 class="brand" data-tauri-drag-region><span class="brand-mark" aria-hidden="true"></span>JhemsStream</h1>
+  <nav id="quickLinks" class="quick app-only" aria-label="Quick links"></nav>
+  <span class="spacer" data-tauri-drag-region></span>
   <div id="updateSlot"></div>
-  <label class="role">Role
+  <label class="role app-only">Role
     <select id="role">
       <option value="director">Director (everything)</option>
       <option value="switcher">Switcher</option>
@@ -31,9 +30,18 @@
       <option value="scores">Scores</option>
     </select>
   </label>
-  <button class="btn ghost small" data-help>Help</button>
-  <button class="btn ghost small" id="btnSettings">Settings</button>
+  <button class="btn ghost small app-only" data-help>Help</button>
+  <button class="btn ghost small app-only" id="btnSettings">Settings</button>
+  <div class="winctl" id="winctl" hidden>
+    <button type="button" class="wbtn" id="wMin" aria-label="Minimize" title="Minimize"><svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M0 5h10" stroke="currentColor" stroke-width="1"/></svg></button>
+    <button type="button" class="wbtn" id="wMax" aria-label="Maximize" title="Maximize"><svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><rect x=".5" y=".5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/></svg></button>
+    <button type="button" class="wbtn close" id="wClose" aria-label="Close JhemsStream" title="Close"><svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M0 0l10 10M10 0 0 10" stroke="currentColor" stroke-width="1"/></svg></button>
+  </div>
 </header>
+
+<section id="connect" class="connect"></section>
+
+<div id="app" class="appshell" hidden>
 
 <main class="workspace">
   <section class="studio" aria-label="Studio Mode">
@@ -83,8 +91,8 @@
       <div class="dock-body">
         <div id="musicRemote" class="tip" hidden></div>
         <div class="nowplaying">
-          <div class="np-head"><span class="np-src" id="npSrc">Queue empty</span><span id="npTag" class="mtag" hidden aria-describedby="npWhy"></span></div>
           <div class="np-title" id="npTitle">Nothing playing</div>
+          <div class="np-head"><span class="np-src" id="npSrc">Queue empty</span><span id="npTag" class="mtag" hidden aria-describedby="npWhy"></span></div>
           <div class="sr" id="npWhy"></div>
           <div id="ytStage" class="yt-stage" hidden></div>
           <div class="np-bar"><i id="npBar"></i></div>
@@ -118,7 +126,15 @@
           <p class="muted small">Songs from files and YouTube crossfade into each other. Spotify plays in its own app, so turn on Spotify’s Crossfade songs setting for its own playlists.</p>
         </details>
         <details class="sub">
+          <summary>Headphones (cue)</summary>
+          <p class="muted small">Pre-listen plays a song privately so you can find where it should start, then Send to stream plays it from there. OBS Desktop Audio records your main speakers, so pick a different device here, like your headphones.</p>
+          <div class="row"><label class="field grow compact"><span>Cue output</span><select id="cueSink"></select></label><button class="btn small" type="button" id="cueNames">Show device names</button></div>
+          <p class="small" id="cueNote" role="status"></p>
+        </details>
+        <details class="sub">
           <summary>Music level per scene</summary>
+          <label class="field"><span>Scene fade <b id="mSceneFadeTxt">3 s</b></span><input type="range" id="mSceneFade" min="1" max="8" step="0.5"></label>
+          <p class="muted small">How slowly the music moves to each scene’s level when that scene goes on air.</p>
           <div id="sceneLevels"></div>
         </details>
         <details class="sub">

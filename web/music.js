@@ -11,36 +11,53 @@ const Music = (() => {
     get(k, d) { try { const v = localStorage.getItem("ld." + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { localStorage.setItem("ld." + k, JSON.stringify(v)); } catch {} },
   };
-  let ctx = null, bus = null;
+  let ctx = null, bus = null, sceneNode = null;
   const decks = [0, 1].map(i => ({ i, el: new Audio(), gain: null, url: null, item: null, mode: null, yt: null, ytReady: null,
                                    g: 0, ramp: null, sent: -1, token: 0, crossing: false, state: -1 }));
   const st = {
     queue: [], cur: -1, active: -1, mode: null, playing: false, xfade: 6, master: 0.8, shuffle: false, skipCopyrighted: false,
-    sceneLevel: 1, duck: 1, played: new Set(), failRun: 0, listeners: [],
+    sceneLevel: 1, sceneFade: 3, duck: 1, played: new Set(), failRun: 0, listeners: [],
   };
+  let sceneRamp = { from: 1, to: 1, t0: 0, ms: 0 };
   const ext = { app: null, user: 1, fade: 1, sent: -1, timer: null };
   let uid = Date.now();
   const newId = () => "q" + (uid++).toString(36);
 
-  /* ---------- bus ---------- */
-  const busValue = () => st.master * st.master * st.sceneLevel * st.duck;
+  /* ---------- bus ----------
+     music level = master² × scene level × duck. The scene level ramps slowly (decibel S-curve, see
+     sceneCurve); ducking is a separate fast multiplier, so a duck never resets a scene ramp. Files:
+     decks → bus (master² × duck) → sceneNode (scene ramp) → speakers. YouTube and Spotify read the
+     same numbers from JS at about 30 Hz. */
+  const sceneNow = (t = performance.now()) => sceneCurve(sceneRamp.from, sceneRamp.to, sceneRamp.ms ? (t - sceneRamp.t0) / sceneRamp.ms : 1);
+  const busValue = () => st.master * st.master * sceneNow() * st.duck;
   function ensureCtx() {
     if (ctx) return;
     ctx = new AudioContext();
-    bus = ctx.createGain(); bus.connect(ctx.destination);
+    sceneNode = ctx.createGain(); sceneNode.gain.value = sceneNow(); sceneNode.connect(ctx.destination);
+    bus = ctx.createGain(); bus.connect(sceneNode);
     for (const d of decks) {
       d.el.preload = "auto";
       d.gain = ctx.createGain(); d.gain.gain.value = 0;
       ctx.createMediaElementSource(d.el).connect(d.gain);
       d.gain.connect(bus);
       d.el.addEventListener("timeupdate", () => checkEnd(d));
-      d.el.addEventListener("ended", () => { if (decks[st.active] === d && d.mode === "file" && st.playing) next(true); });
+      d.el.addEventListener("ended", () => { if (decks[st.active] === d && d.mode === "file" && st.playing && !d.crossing) next(true); });
     }
-    applyBus(0.05);
+    applyBus(0.05); scheduleScene();
   }
   function applyBus(tc = 0.25) {
-    if (bus) bus.gain.setTargetAtTime(busValue(), ctx.currentTime, tc);
+    if (bus) bus.gain.setTargetAtTime(st.master * st.master * st.duck, ctx.currentTime, tc);
     pushExt();
+  }
+  /* schedule the scene ramp on the Web Audio clock with the same curve the JS side uses */
+  function scheduleScene() {
+    if (!sceneNode) return;
+    const g = sceneNode.gain, now = ctx.currentTime, left = sceneRamp.t0 + sceneRamp.ms - performance.now();
+    g.cancelScheduledValues(now);
+    if (left <= 20) { g.setValueAtTime(sceneRamp.to, now); return; }
+    const c = new Float32Array(64), t0 = performance.now();
+    for (let i = 0; i < 64; i++) c[i] = sceneNow(t0 + (left * i) / 63);
+    g.setValueCurveAtTime(c, now + 0.001, left / 1000);
   }
   /* equal-power: sin rise, cos fall, so two decks crossing keep the loudness level */
   const ep = (from, to, x) => to < from ? to + (from - to) * Math.cos(x * Math.PI / 2) : from + (to - from) * Math.sin(x * Math.PI / 2);
@@ -66,6 +83,7 @@ const Music = (() => {
       if (v !== d.sent) { d.sent = v; try { d.yt.setVolume(v); } catch {} }
       checkEnd(d);
     }
+    if (sceneRamp.ms && now - sceneRamp.t0 <= sceneRamp.ms + 50) pushExt();
   }, 33);
   function stopDeck(d) {
     if (d.mode === "file") d.el.pause();
@@ -118,7 +136,7 @@ const Music = (() => {
     d.onFail?.(item.err);
     if (decks[st.active] === d && st.playing) next(true);
   }
-  function waitPlaying(d, ms = 9000) {
+  function waitPlaying(d, ms = 15000) {
     return new Promise((res, rej) => {
       const done = (ok, why) => { clearTimeout(t); d.onState = null; d.onFail = null; ok ? res() : rej(new Error(why)); };
       const t = setTimeout(() => done(false, "timeout"), ms);
@@ -141,6 +159,7 @@ const Music = (() => {
     const inIdx = st.active === 0 ? 1 : 0, din = decks[inIdx], dout = st.active >= 0 ? decks[st.active] : null;
     const tok = ++din.token, wasPlaying = st.playing, fromSpotify = st.mode === "sp";
     st.pending = i; // a second Next during loading moves on from here
+    emit("loading", i); // the dock shows the YouTube stage now: a zero-size player loads slowly
     await rampTo(din, 0, 0.08); stopDeck(din);
     if (tok !== din.token) return;
     try {
@@ -150,6 +169,8 @@ const Music = (() => {
         if (tok !== din.token) return URL.revokeObjectURL(url);
         if (din.url) URL.revokeObjectURL(din.url);
         din.mode = "file"; din.url = url; din.el.src = url;
+        const { start } = cueRange(item, item.duration);
+        if (start > 0) { await metaReady(din.el); din.el.currentTime = start; }
         await din.el.play();
       } else {
         await ensureYT(din);
@@ -157,7 +178,8 @@ const Music = (() => {
         din.mode = "yt"; din.g = 0; din.ramp = null; din.sent = 0; din.yt.setVolume(0);
         din.item = item;
         const ready = waitPlaying(din);
-        din.yt.loadVideoById(item.vid);
+        const { start } = cueRange(item, item.duration);
+        din.yt.loadVideoById(start > 0 ? { videoId: item.vid, startSeconds: start } : item.vid);
         await ready;
         if (!item.duration) { item.duration = din.yt.getDuration() || 0; save(); }
       }
@@ -181,9 +203,16 @@ const Music = (() => {
   }
   function checkEnd(d) {
     if (d !== decks[st.active] || d.crossing || !st.playing || d.mode !== st.mode) return;
-    const p = deckPos(d); if (!p) return;
-    const left = p.dur - p.cur;
-    if (p.dur > st.xfade * 2 && left <= st.xfade) { d.crossing = true; next(true); }
+    const p = deckPos(d); if (!p || !p.dur) return;
+    if (shouldAdvance(p.cur, cueRange(d.item, p.dur), st.xfade)) { d.crossing = true; next(true); }
+  }
+  function metaReady(el, ms = 8000) {
+    if (el.readyState >= 1) return Promise.resolve();
+    return new Promise(res => {
+      const done = () => { clearTimeout(t); el.removeEventListener("loadedmetadata", done); el.removeEventListener("error", done); res(); };
+      const t = setTimeout(done, ms);
+      el.addEventListener("loadedmetadata", done); el.addEventListener("error", done);
+    });
   }
   function deckPos(d) {
     if (d.mode === "file") return { cur: d.el.currentTime || 0, dur: d.el.duration || d.item?.duration || 0 };
@@ -387,22 +416,163 @@ const Music = (() => {
   }
 
   /* ---------- bus controls ---------- */
-  function setScene(level, secs = 1.2) { st.sceneLevel = level; applyBus(secs / 3); emit("level"); }
+  /* gradual: a new scene level ramps from wherever the current ramp is, over secs (default: Scene fade) */
+  function setScene(level, secs = st.sceneFade) {
+    const t = performance.now();
+    sceneRamp = { from: sceneNow(t), to: Math.max(0, level), t0: t, ms: Math.max(0, secs) * 1000 };
+    st.sceneLevel = level; scheduleScene(); pushExt(); emit("level");
+  }
   function setDuck(on, depth) { const v = on ? depth : 1; if (v === st.duck) return; st.duck = v; applyBus(on ? 0.05 : 0.35); emit("duck"); }
   function setMaster(v) { st.master = v; applyBus(0.05); }
 
   function emit(type, data) { st.listeners.forEach(f => { try { f(type, data); } catch (e) { console.error(e); } }); }
   const label = t => !t ? "" : (t.title && t.author) ? `${t.title}, ${t.author}` : (t.title || "Untitled");
-  function position() { const d = decks[st.active]; return st.mode === "sp" || !d ? null : deckPos(d); }
+  function position() {
+    const d = decks[st.active]; if (st.mode === "sp" || !d) return null;
+    const p = deckPos(d); if (p && p.dur) p.end = Math.min(p.dur, cueRange(d.item, p.dur).end);
+    return p;
+  }
+
+  /* ---------- cue points and pre-listen ----------
+     Each item can start at cueIn and end at cueOut (seconds). Pre-listen plays an item from its
+     start point privately: files go to a chosen "Cue output" (headphones) with setSinkId, which OBS
+     Desktop Audio does not record. YouTube can't be routed, so its pre-listen is main-speakers only,
+     allowed before going live while the music is stopped. */
+  const cue = { el: new Audio(), item: null, url: null, mode: null, yt: null, ytReady: null, sink: store.get("cueSink", "") };
+  cue.el.preload = "auto";
+  cue.el.addEventListener("ended", () => stopPrelisten());
+  function setCue(id, patch) {
+    const it = st.queue[indexOf(id)]; if (!it || it.kind === "sp") return;
+    const round = v => Math.round(v * 10) / 10;
+    if ("in" in patch) it.cueIn = round(Math.max(0, +patch.in || 0));
+    if ("out" in patch) it.cueOut = patch.out == null || patch.out === "" ? null : round(Math.max(0, +patch.out));
+    const r = cueRange(it, it.duration);
+    // an end point at (or past) the song end, or not after the start, means "play to the end"
+    it.cueIn = r.start; it.cueOut = isFinite(r.end) && !(it.duration && r.end >= it.duration) ? r.end : null;
+    save(); emit("cuepoint", id);
+  }
+  async function isDefaultSink(id) {
+    if (!id || id === "default" || id === "communications") return true;
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    const def = devs.find(d => d.kind === "audiooutput" && d.deviceId === "default"), mine = devs.find(d => d.deviceId === id);
+    return !!(def && mine && def.groupId && def.groupId === mine.groupId);
+  }
+  // a saved Cue output that is unplugged: the browser would fall back to the main speakers
+  async function sinkMissing(id) {
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audiooutput");
+    return !!id && devs.some(d => d.deviceId) && !devs.some(d => d.deviceId === id);
+  }
+  async function canPrelisten(item) {
+    if (!item) return { ok: false, why: "Pick a song." };
+    if (item.kind === "sp") return { ok: false, why: "Spotify plays in its own app, so it can’t be pre-listened here." };
+    if (item.kind === "file") {
+      if (!cue.el.setSinkId) return { ok: false, why: "This browser can’t send sound to a second output. Use the desktop app." };
+      if (await sinkMissing(cue.sink)) return { ok: false, why: "Your Cue output isn’t connected. Plug in your headphones or pick them again under Headphones (cue)." };
+      if (await isDefaultSink(cue.sink)) return { ok: false, why: "Choose a Cue output that isn’t your main speakers. OBS Desktop Audio records the main speakers, so the pre-listen would go out on the stream." };
+      return { ok: true };
+    }
+    if (window.JS?.S?.streaming) return { ok: false, why: "You’re live. YouTube pre-listen plays on the main speakers, which OBS Desktop Audio records." };
+    if (st.playing) return { ok: false, why: "Music is playing. YouTube pre-listen plays on the main speakers, so stop the music first." };
+    return { ok: true, note: "Pre-listen plays on the main speakers for YouTube. It reaches OBS Desktop Audio, so only use it before going live." };
+  }
+  function ensureCueYT() {
+    if (cue.ytReady) return cue.ytReady;
+    cue.ytReady = loadYT().then(YT => new Promise(res => {
+      const slot = document.createElement("div"); slot.className = "yt-deck yt-cue"; slot.dataset.deck = "cue";
+      const inner = document.createElement("div"); slot.append(inner); stageHost().append(slot);
+      cue.yt = new YT.Player(inner, { width: "100%", height: "100%",
+        playerVars: { autoplay: 0, controls: 0, disablekb: 1, playsinline: 1, rel: 0, iv_load_policy: 3, fs: 0 },
+        events: { onReady: () => res(cue.yt), onStateChange: e => { if (e.data === 0) stopPrelisten(); } } });
+    }));
+    return cue.ytReady;
+  }
+  async function prelisten(i, at) {
+    const item = st.queue[i], chk = await canPrelisten(item);
+    if (!chk.ok) throw new Error(chk.why);
+    stopPrelisten();
+    const t = at ?? cueRange(item, item.duration).start;
+    cue.item = item;
+    if (item.kind === "file") {
+      cue.url = await srcFor(item); cue.el.src = cue.url;
+      // routing happens before play, so a missing device can never leak the pre-listen to the main speakers
+      try { await cue.el.setSinkId(cue.sink); }
+      catch { stopPrelisten(); throw new Error("Couldn’t reach your Cue output. Plug in your headphones or pick them again under Headphones (cue)."); }
+      await metaReady(cue.el);
+      if (!item.duration && isFinite(cue.el.duration)) { item.duration = cue.el.duration; save(); }
+      cue.el.currentTime = t; await cue.el.play(); cue.mode = "file";
+    } else {
+      await ensureCueYT();
+      cue.yt.setVolume(30); cue.yt.loadVideoById({ videoId: item.vid, startSeconds: t }); cue.mode = "yt";
+    }
+    emit("cue"); return chk;
+  }
+  function stopPrelisten() {
+    if (cue.mode === "file") cue.el.pause();
+    if (cue.mode === "yt") try { cue.yt.pauseVideo(); } catch {}
+    if (cue.url) { URL.revokeObjectURL(cue.url); cue.url = null; cue.el.removeAttribute("src"); cue.el.load(); } // load() frees the media player
+    const was = cue.mode; cue.mode = null; cue.item = null;
+    if (was) emit("cue");
+  }
+  function cueTime() {
+    if (cue.mode === "file") return cue.el.currentTime;
+    if (cue.mode === "yt") try { return cue.yt.getCurrentTime(); } catch {}
+    return null;
+  }
+  function cueSeek(t) {
+    if (cue.mode === "file") cue.el.currentTime = t;
+    if (cue.mode === "yt") try { cue.yt.seekTo(t, true); } catch {}
+  }
+  /* "Send to stream": stop the private pre-listen and crossfade the stream to the item from its start point */
+  function sendToStream(i) { stopPrelisten(); return play(i); }
+  async function listSinks(askForNames = false) {
+    if (askForNames) { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach(t => t.stop()); }
+    return (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audiooutput");
+  }
+  function setSink(id) { cue.sink = id; store.set("cueSink", id); if (cue.mode === "file") cue.el.setSinkId(id).catch(() => {}); }
 
   st.queue = store.get("queue", []); st.cur = Math.min(store.get("queueCur", -1), st.queue.length - 1);
-  st.xfade = store.get("xfade", 6); st.master = store.get("master", 0.8);
+  st.xfade = store.get("xfade", 6); st.master = store.get("master", 0.8); st.sceneFade = store.get("sceneFade", 3);
   st.shuffle = store.get("shuffle", false); st.skipCopyrighted = store.get("skipCopyrighted", false);
 
   return { st, ext, decks, play, next, prev, toggle, fadeOut, add, addUrl, addFiles, remove, move, playNext, clear, save,
            setScene, setDuck, setMaster, extSkip, extToggle, tweenExt, pushExt, label, position, parseUrl, ep, pickNext,
+           get sceneNow() { return sceneNow(); },
+           cue, setCue, canPrelisten, prelisten, stopPrelisten, cueTime, cueSeek, sendToStream, listSinks, setSink, isDefaultSink, sinkMissing,
            on: f => st.listeners.push(f), get level() { return busValue(); }, get current() { return st.queue[st.cur] || null; } };
 })();
+
+/* Scene level ramp: interpolate in decibels on a smoothstep, so the change sounds even and
+   starts and ends gently. Silence is floored at -60 dB and lands on exact 0 at the end. */
+function sceneCurve(from, to, x) {
+  if (x >= 1) return to;
+  if (x <= 0) return from;
+  const db = g => g > 0.001 ? 20 * Math.log10(g) : -60;
+  const s = x * x * (3 - 2 * x), d = db(from) + (db(to) - db(from)) * s;
+  return d <= -60 ? 0 : Math.pow(10, d / 20);
+}
+
+/* Cue math. start = cueIn kept inside the song; end = cueOut, or the song end when unset or not after start. */
+function cueRange(item, dur) {
+  const D = dur > 0 ? dur : Infinity;
+  let start = Math.max(0, +item?.cueIn || 0);
+  if (start > D - 1) start = Math.max(0, D - 1);
+  let end = item?.cueOut > 0 ? Math.min(+item.cueOut, D) : D;
+  if (end <= start + 1) end = D;
+  return { start, end };
+}
+/* Move on when past the end point, or when the crossfade has to start to finish on it. */
+function shouldAdvance(cur, range, xfade) {
+  if (!isFinite(range.end)) return false;
+  if (cur >= range.end - 0.05) return true;
+  return range.end - range.start > xfade * 2 && range.end - cur <= xfade;
+}
+/* "1:23", "83", "1:23.5", "0:01:23" to seconds; NaN when it isn't a time */
+function parseClock(s) {
+  const p = String(s ?? "").trim().split(":");
+  if (!p[0] && p.length === 1) return NaN;
+  if (p.some(x => !/^\d+(\.\d+)?$/.test(x)) || p.length > 3) return NaN;
+  return p.reduce((acc, x) => acc * 60 + +x, 0);
+}
 
 /* Copyright tag for a YouTube upload, from its title and channel. Facebook's own matching decides; this only flags. */
 function tagYouTube(title = "", author = "") {

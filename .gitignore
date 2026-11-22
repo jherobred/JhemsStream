@@ -4,3 +4,5 @@ src-tauri/gen/
 .env*
 web/_test/
 .taste-skill/
+.claude-chat/
+releases/

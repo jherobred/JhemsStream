@@ -27,6 +27,11 @@ Get-ChildItem $out | Remove-Item -Force
 $name = "JhemsStream_${ver}_x64-setup.exe"          # no spaces, so the GitHub asset name matches the URL
 Copy-Item $exe.FullName "$out\$name"
 Copy-Item "$($exe.FullName).sig" "$out\$name.sig"
+# keep every installer on this computer too, next to the project
+$local = Join-Path (Split-Path $PSScriptRoot -Parent) "releases"
+New-Item -ItemType Directory -Force $local | Out-Null
+Copy-Item "$out\$name" (Join-Path $local $name) -Force
+Write-Host "Local copy: $(Join-Path $local $name)"
 
 $manifest = [ordered]@{
   version   = $ver

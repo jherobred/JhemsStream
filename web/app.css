@@ -25,12 +25,14 @@
   --next:light-dark(#22874D,#3FB46E); --next-soft:light-dark(#D9F2E3,#1C3527); --next-ink:light-dark(#145530,#A9EBC3);
   --warn:light-dark(#8A5200,#F2B544); --warn-soft:light-dark(#FFF1D6,#3A2E14);
   --m-ok:#4CAF50; --m-hot:#E3B226; --m-clip:#E03E3E;
+  --m-ok-dim:light-dark(#CFE9D0,#1F3A22); --m-hot-dim:light-dark(#F3E7C2,#3B3418); --m-clip-dim:light-dark(#F2CDCD,#3E1F20);
   --screen:#07080B;
+  --win-close:#C42B1C; --win-close-down:#B22A1B; /* Windows' own close-button red, expected on a caption bar */
   --float-shadow:0 14px 36px -12px light-dark(rgba(20,22,30,.35),rgba(0,0,0,.75));
   --scrim:light-dark(rgba(20,22,30,.4),rgba(0,0,0,.6));
   --r-card:6px; --r-control:4px; --r-tag:3px;
   --h-control:32px; --h-small:28px; --h-row:44px;
-  --docks-h:360px; --gap:4px; --pad-dock:8px; --take-h:72px; --tbar-h:120px; --thumb-w:72px;
+  --docks-h:clamp(250px,40vh,360px); --gap:4px; --pad-dock:8px; --take-h:72px; --tbar-h:120px; --thumb-w:72px;
   --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px;
   --fs-body:13px; --fs-small:12px; --fs-title:13px; --fs-section:15px;
   --dur-micro:100ms; --dur-short:180ms; --ease:cubic-bezier(.16,1,.3,1);
@@ -38,7 +40,7 @@
   &:has(> head > meta[name="color-scheme"][content="light"]){color-scheme:light}
 }
 /* compact view: tighter rows and shorter docks so more fits on a laptop screen */
-:root:has(body.compact){--h-control:28px;--h-small:24px;--h-row:36px;--docks-h:300px;--pad-dock:6px;--take-h:56px;--tbar-h:96px;--thumb-w:56px;--fs-body:12px}
+:root:has(body.compact){--h-control:28px;--h-small:24px;--h-row:36px;--docks-h:clamp(220px,36vh,300px);--pad-dock:6px;--take-h:56px;--tbar-h:96px;--thumb-w:56px;--fs-body:12px}
 
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -107,21 +109,32 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .seg button[aria-checked=true]{background:var(--raised);color:var(--text);font-weight:600}
 
 /* shell: menu bar, workspace, docks, status bar */
-.appshell{display:flex;flex-direction:column;min-height:100vh}
-.menubar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:var(--s2);padding:var(--s1) var(--s2);background:var(--surface);border-bottom:1px solid var(--border)}
+/* the console fits the window like OBS: the bar on top, docks take what is left and scroll inside */
+body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+.appshell{display:flex;flex-direction:column;flex:1;min-height:0}
+.menubar{flex:none;z-index:5;display:flex;align-items:center;gap:var(--s2);min-height:36px;padding:0 0 0 var(--s2);background:var(--surface);border-bottom:1px solid var(--border);user-select:none}
+body:not(.connected) .app-only{display:none!important}
+/* window buttons, sized and placed like Windows' own caption buttons */
+.winctl{display:flex;align-self:stretch;margin-left:var(--s1)}
+.wbtn{width:46px;border:0;background:transparent;color:var(--text);display:grid;place-items:center;transition:background-color var(--dur-micro)}
+.wbtn:hover{background:var(--raised)}
+.wbtn:active{background:var(--pressed)}
+.wbtn.close:hover{background:var(--win-close);color:var(--on-air)}
+.wbtn.close:active{background:var(--win-close-down)}
+.wbtn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .brand{display:flex;align-items:center;gap:var(--s2);font-size:var(--fs-title);font-weight:600;padding:0 var(--s2) 0 var(--s1)}
 .brand-mark{width:16px;height:16px;border-radius:50%;background:var(--text);position:relative}
-.brand-mark::after{content:"";position:absolute;inset:5px;border-radius:50%;background:var(--air)}
+.brand-mark::after{content:"";position:absolute;inset:5px;border-radius:50%;background:var(--accent)}
 .quick{display:flex;gap:2px;flex-wrap:wrap}
 .role{display:flex;align-items:center;gap:var(--s1);font-size:var(--fs-small);color:var(--muted)}
 .role select{min-height:var(--h-small)}
 .banner{background:var(--warn-soft);font-weight:600;padding:var(--s2) var(--s4);border-bottom:1px solid var(--border)}
 
-.workspace{flex:1;display:flex;flex-direction:column;gap:var(--gap);padding:var(--gap)}
+.workspace{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:var(--gap);padding:var(--gap)}
 
 /* Studio Mode: Preview | transition column | Program, sized so both fit above the docks */
-.studio{display:grid;grid-template-columns:minmax(0,1fr) 132px minmax(0,1fr);gap:var(--s3);align-items:center;background:var(--ground);padding:var(--s2) var(--s3);
-  width:100%;max-width:calc((100vh - var(--docks-h) - 150px) * 32 / 9 + 180px);margin:0 auto}
+.studio{display:grid;grid-template-columns:minmax(0,1fr) 132px minmax(0,1fr);gap:var(--s3);align-items:start;background:var(--ground);padding:var(--s2) var(--s3);
+  width:100%;max-width:calc((100vh - var(--docks-h) - 120px) * 32 / 9 + 160px);margin:0 auto;flex:none}
 body.quick .studio{grid-template-columns:minmax(0,1fr);max-width:calc((100vh - var(--docks-h) - 150px) * 16 / 9)}
 body.quick .studio-only,body:not(.quick) .quick-only{display:none!important}
 @media (max-width:760px){.studio{grid-template-columns:minmax(0,1fr);max-width:none}}
@@ -156,8 +169,8 @@ body.quick .studio-only,body:not(.quick) .quick-only{display:none!important}
 @keyframes segOn{from{opacity:0}to{opacity:1}}
 
 /* docks */
-.docks{flex:1;display:grid;grid-template-columns:minmax(220px,1fr) minmax(280px,1.25fr) minmax(300px,1.4fr) minmax(280px,1.2fr) minmax(170px,.6fr);gap:var(--gap);min-height:var(--docks-h)}
-@media (max-width:1400px){.docks{grid-template-columns:repeat(auto-fill,minmax(300px,1fr));flex:none}.dock{height:var(--docks-h)}}
+.docks{flex:1;display:grid;grid-template-rows:minmax(0,1fr);grid-template-columns:minmax(180px,1fr) minmax(230px,1.25fr) minmax(250px,1.4fr) minmax(230px,1.2fr) minmax(150px,.6fr);gap:var(--gap);min-height:var(--docks-h)}
+@media (max-width:1240px){.docks{grid-template-columns:repeat(auto-fill,minmax(300px,1fr));grid-template-rows:none;flex:none}.dock{height:var(--docks-h)}}
 @media (max-width:760px){
   .menubar{flex-wrap:wrap}
   .menubar .quick{order:5;width:100%;flex-wrap:nowrap;overflow-x:auto}
@@ -221,12 +234,17 @@ body:not([data-role=director]) .director-only-note{display:block}
 .mixhead{display:flex;align-items:center;gap:var(--s1)}
 .mixhead b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .db{font-size:var(--fs-small);color:var(--muted);font-variant-numeric:tabular-nums;min-width:56px;text-align:right}
-.mixhead .btn{min-height:24px}
-.meter{position:relative;height:6px;background:var(--field);border:1px solid var(--border);overflow:hidden;margin:var(--s1) 0}
+.mutedtag{font-size:var(--fs-small);color:var(--air);font-weight:600}
+.mixctl{display:flex;align-items:center;gap:var(--s1)}
+.mixctl input[type=range]{flex:1;min-width:60px}
+.mixctl .btn{min-height:24px;width:28px}
+/* meter: the green, yellow and red zones stay visible dimmed at silence, like OBS; the bright fill is the level */
+.meter{position:relative;height:10px;border-radius:2px;overflow:hidden;margin:var(--s1) 0;
+  background:linear-gradient(90deg,var(--m-ok-dim) 0 70%,var(--m-hot-dim) 70% 90%,var(--m-clip-dim) 90%)} /* taste-skill-ignore: hard-stop meter zones are data, not decoration */
 .meter .fill{position:absolute;inset:0;transform-origin:left;transform:scaleX(0);transition:transform 50ms linear;
-  background:linear-gradient(90deg,var(--m-ok) 0 70%,var(--m-hot) 70% 90%,var(--m-clip) 90%)}
+  background:linear-gradient(90deg,var(--m-ok) 0 70%,var(--m-hot) 70% 90%,var(--m-clip) 90%)} /* taste-skill-ignore: hard-stop meter zones are data */
 .meter .peak{position:absolute;top:0;bottom:0;left:0;width:2px;background:var(--text);transform:translateX(var(--peak,0px));transition:transform .1s linear}
-.btn.mute.on{background:var(--air);border-color:var(--air);color:var(--on-air)}
+.btn.mute.on{background:var(--raised);border-color:var(--border);color:var(--air)}
 
 /* music dock */
 .nowplaying{background:var(--field);border:1px solid var(--border);border-radius:var(--r-card);padding:var(--s2) var(--s3);margin-bottom:var(--s2)}
@@ -341,7 +359,7 @@ dialog.settings[open]{display:flex}
 @media (max-width:720px){.set-body{grid-template-columns:minmax(0,1fr)}.set-nav{border-right:0;border-bottom:1px solid var(--border);max-height:200px}.set-row{flex-wrap:wrap}}
 
 /* connect / setup */
-.connect{min-height:100vh;display:grid;place-items:center;padding:var(--s6)}
+.connect{flex:1;min-height:0;overflow:auto;display:grid;place-items:center;padding:var(--s6)}
 .connect .card{width:100%;max-width:520px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);padding:var(--s6)}
 .connect .card h1,.connect .card h2,.connect .card h3{font-size:20px;margin:0 0 var(--s2)}
 .steps{list-style:none;padding:0;margin:var(--s4) 0;display:flex;flex-direction:column}

@@ -26,7 +26,8 @@ const ICONS = {
   fade: '<path d="M3 18c6 0 9-12 18-12"/>', mic: '<path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM19 11a7 7 0 0 1-14 0M12 18v3"/>',
   mute: '<path d="M11 5 6 9H2v6h4l5 4zM22 9l-6 6M16 9l6 6"/>', vol: '<path d="M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/>',
   phones: '<path d="M3 14v-2a9 9 0 0 1 18 0v2M21 15a2 2 0 0 1-2 2h-1v-6h1a2 2 0 0 1 2 2zM3 15a2 2 0 0 0 2 2h1v-6H5a2 2 0 0 0-2 2z"/>',
-  rec: '<circle cx="12" cy="12" r="6" fill="currentColor"/>', plus: '<path d="M12 5v14M5 12h14"/>',
+  rec: '<circle cx="12" cy="12" r="6" fill="currentColor"/>', plus: '<path d="M12 5v14M5 12h14"/>', minus: '<path d="M5 12h14"/>',
+  close: '<path d="M6 6l12 12M18 6 6 18"/>', up: '<path d="m6 15 6-6 6 6"/>', down: '<path d="m6 9 6 6 6-6"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   ext: '<path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/>', wand: '<path d="M4 20 15 9M14 4v2M19 9h2M17.5 5.5 19 4M9 5l.5 1.5M18 13l1.5.5"/>',
   shield: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/>', check: '<path d="m5 12 5 5L20 7"/>',
@@ -74,7 +75,7 @@ function connect({ host = "localhost", port = 4455, password = "" } = {}) {
   });
 }
 obs.on("Identified", async () => {
-  S.connected = true; banner("");
+  S.connected = true; banner(""); document.body.classList.add("connected");
   $("#connect").hidden = true; $("#app").hidden = false;
   $("#connPill").textContent = "OBS connected"; $("#connPill").className = "pill ok";
   log("Connected to OBS");
@@ -85,7 +86,7 @@ obs.on("Identified", async () => {
 });
 obs.on("ConnectionClosed", e => {
   if (!S.connected) return;
-  S.connected = false;
+  S.connected = false; document.body.classList.remove("connected");
   $("#connPill").textContent = "OBS disconnected"; $("#connPill").className = "pill bad";
   log(`Disconnected from OBS (${e.code || "?"})`, true);
   banner("Lost connection to OBS. Reconnecting…");
@@ -133,6 +134,8 @@ function renderScenes() {
     tile.classList.toggle("is-program", isP); tile.classList.toggle("is-preview", isV);
     tile.querySelector(".tag").textContent = isP ? "On air" : isV ? "Next" : "";
   }
+  // keep the on-air scene visible in the Scenes dock
+  tileEls.get(S.program)?.scrollIntoView({ block: "nearest" });
   $("#nameProgram").textContent = S.program || "None";
   $("#namePreview").textContent = S.preview || "None";
 }
@@ -347,12 +350,14 @@ function renderMixer() {
     const range = h("input", { type: "range", min: -60, max: 6, step: 0.5, value: Math.max(-60, a.db), "aria-label": `${a.name} volume` });
     const dbLbl = h("span", { class: "db" }, fmtDb(a.db));
     range.addEventListener("input", () => { dbLbl.textContent = fmtDb(+range.value); obs.call("SetInputVolume", { inputName: a.name, inputVolumeDb: +range.value }).catch(() => {}); });
-    const mute = h("button", { class: `btn small mute${a.muted ? " on" : ""}`, "aria-pressed": String(a.muted), onclick: () => fadeMute(a) }, icon(a.muted ? "mute" : "vol"), a.muted ? "Muted" : "Mute");
+    // OBS layout: name and level on top, meter, then fader with icon buttons beside it
+    const mute = h("button", { class: `btn small icon mute${a.muted ? " on" : ""}`, "aria-pressed": String(a.muted), title: a.muted ? "Unmute (fades in)" : "Mute (fades out)", "aria-label": `${a.muted ? "Unmute" : "Mute"} ${a.name}`, onclick: () => fadeMute(a) }, icon(a.muted ? "mute" : "vol"));
     const mon = h("button", { class: `btn small icon${a.monitor ? " on" : ""}`, "aria-pressed": String(a.monitor), title: "Hear it in your headphones", "aria-label": `Monitor ${a.name}`, onclick: () => toggleMonitor(a) }, icon("phones"));
-    const tools = MIC_KINDS.includes(a.kind) ? h("button", { class: "btn small", title: "Noise removal, compressor and limiter", onclick: () => cleanMic(a.name) }, icon("wand"), "Clean up") : null;
+    const tools = MIC_KINDS.includes(a.kind) ? h("button", { class: "btn small icon", title: "Clean up: noise removal, compressor and limiter", "aria-label": `Clean up ${a.name}`, onclick: () => cleanMic(a.name) }, icon("wand")) : null;
     box.append(h("div", { class: `mixrow${a.muted ? " muted-row" : ""}`, "data-input": a.name },
-      h("div", { class: "mixhead" }, h("b", { class: "grow" }, a.name), dbLbl, tools, mon, mute),
-      h("div", { class: "meter" }, fill, peak), range));
+      h("div", { class: "mixhead" }, h("b", { class: "grow", title: a.name }, a.name), a.muted ? h("span", { class: "mutedtag" }, "Muted") : null, dbLbl),
+      h("div", { class: "meter" }, fill, peak),
+      h("div", { class: "mixctl" }, range, tools, mon, mute)));
   }
 }
 obs.on("InputVolumeMeters", ({ inputs }) => {
@@ -476,9 +481,9 @@ function renderTexts() {
       const n = Number(textOf(SB[sk])) || 0;
       return h("div", { class: `scorecard side-${side}` }, inp,
         h("div", { class: "scorectl" },
-          h("button", { class: "btn icon", "aria-label": `Team ${side} minus one`, onclick: () => setText(SB[sk], String(Math.max(0, n - 1))) }, "−"),
+          h("button", { class: "btn icon", "aria-label": `Team ${side} minus one`, onclick: () => setText(SB[sk], String(Math.max(0, n - 1))) }, icon("minus")),
           h("span", { class: "n" }, String(n)),
-          h("button", { class: "btn icon primary", "aria-label": `Team ${side} plus one`, onclick: () => setText(SB[sk], String(n + 1)) }, "+")));
+          h("button", { class: "btn icon primary", "aria-label": `Team ${side} plus one`, onclick: () => setText(SB[sk], String(n + 1)) }, icon("plus"))));
     };
     sb.append(team("a", "sa", "A"), team("b", "sb", "B"), h("div", { class: "row" },
       h("button", { class: "btn", onclick: swapSides }, "Swap sides"),
@@ -618,7 +623,7 @@ const HELP = [
   ["Welcome to JhemsStream", `<p>JhemsStream is a companion for OBS. OBS does the video and sends it to Facebook. JhemsStream puts the controls your crew needs in one window.</p><p>Up to three people can help at once: open JhemsStream on another laptop and connect to the streaming PC.</p>`],
   ["Preview, then Transition", `<p>Each row in <b>Scenes</b> is something viewers can see. Click one to load it into <b>Preview</b> (green). Check it, then press <b>Transition</b> or Space to send it to <b>Program</b> (red), which is what viewers see.</p><p>Drag the <b>T-bar</b> to transition by hand. Keys 1 to 9 pick scenes, C cuts.</p>`],
   ["Showing the game from Discord", `<p>On the streaming PC, open the player’s Discord stream, press <b>Pop Out</b>, then full screen in the pop-out. In JhemsStream press <b>Edit</b> on Main Game, then <b>Add source</b>, then <b>Discord screen share</b>. Its sound comes in too.</p>`],
-  ["Music that flows", `<p>In <b>Music</b>, choose a folder of songs. Songs crossfade on their own, the music gets quieter during gameplay, and it ducks when casters talk. You can also fade Spotify or YouTube.</p><p>Songs tagged by record labels get a <b>High risk</b> badge. Facebook can mute or stop a stream over them.</p>`],
+  ["Music that flows", `<p>In <b>Music</b>, paste YouTube or Spotify links or add a folder of songs. Songs crossfade on their own, the music fades down gradually on gameplay scenes, and it ducks when casters talk.</p><p>Songs that look like label releases get a <b>Likely copyrighted</b> tag. They still play, but Facebook can mute or stop a stream over them.</p>`],
   ["Going live", `<ol><li><b>Stream key</b> tab: <b>Get stream key from Facebook</b>, paste it, <b>Save key to OBS</b>.</li><li>Go through the <b>Checklist</b>.</li><li>Put <b>Starting Soon</b> on Program, press <b>Start streaming</b>, then press <b>Go live</b> in Facebook too.</li></ol>`],
   ["Roles and settings", `<p>Pick a <b>Role</b> at the top. Switcher, Audio and music, and Scores hide streaming, the stream key and delete buttons, so helpers can’t end the stream by accident.</p><p><b>Settings</b> has the dark or light theme and compact view. Reopen this guide with <b>Help</b>.</p>`],
 ];
@@ -638,6 +643,20 @@ $$("[data-help]").forEach(b => b.addEventListener("click", openHelp));
 
 /* ---------- shared API for editor.js and setup.js ---------- */
 window.JS = { obs, S, call, h, $, $$, store, log, toast, icon, pickScene, refreshScenes, refreshInputs, connect, onReady: f => readyFns.push(f), openExt };
+
+/* ---------- window buttons in our own title bar (desktop app has no Windows title bar) ---------- */
+if (TAURI?.window) {
+  const win = TAURI.window.getCurrentWindow();
+  $("#winctl").hidden = false;
+  const syncMax = async () => { const m = await win.isMaximized(); $("#wMax").setAttribute("aria-label", m ? "Restore" : "Maximize"); $("#wMax").title = m ? "Restore" : "Maximize"; };
+  $("#wMin").addEventListener("click", () => win.minimize());
+  $("#wMax").addEventListener("click", async () => { await win.toggleMaximize(); syncMax(); });
+  $("#wClose").addEventListener("click", () => {
+    if (S.streaming && !confirm("You're live. Close JhemsStream? OBS keeps streaming, but you lose these controls until you reopen it.")) return;
+    win.close();
+  });
+  win.onResized?.(() => syncMax()); syncMax();
+}
 window.addEventListener("load", () => {
   if (window.Setup?.start) Setup.start();
   else { $("#connect").hidden = false; $("#connect").textContent = "setup.js failed to load."; }
