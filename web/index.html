@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<script>try{document.querySelector('meta[name="color-scheme"]').content=localStorage.getItem("color-scheme")??"dark"}catch{}</script>
+<meta name="description" content="JhemsStream: a companion control panel for OBS that lets a small crew run a Facebook Live broadcast, with Studio Mode switching, music crossfades and a scoreboard.">
+<title>JhemsStream</title>
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="music.css">
+</head>
+<body data-role="director">
+
+<div id="banner" class="banner" role="alert" hidden></div>
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<section id="connect" class="connect"></section>
+
+<div id="app" class="appshell" hidden>
+<header class="menubar">
+  <h1 class="brand"><span class="brand-mark" aria-hidden="true"></span>JhemsStream</h1>
+  <nav id="quickLinks" class="quick" aria-label="Quick links"></nav>
+  <span class="spacer"></span>
+  <div id="updateSlot"></div>
+  <label class="role">Role
+    <select id="role">
+      <option value="director">Director (everything)</option>
+      <option value="switcher">Switcher</option>
+      <option value="audio">Audio and music</option>
+      <option value="scores">Scores</option>
+    </select>
+  </label>
+  <button class="btn ghost small" data-help>Help</button>
+  <button class="btn ghost small" id="btnSettings">Settings</button>
+</header>
+
+<main class="workspace">
+  <section class="studio" aria-label="Studio Mode">
+    <div class="mon mon-preview studio-only">
+      <div class="mon-label"><span class="tally next">Preview</span><span class="mon-name" id="namePreview">Waiting</span></div>
+      <div class="screen"><img id="imgPreview" width="1280" height="720" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 90'%3E%3Crect width='160' height='90' fill='%23101114'/%3E%3Ctext x='80' y='49' fill='%23C8CCD4' font-family='sans-serif' font-size='7' text-anchor='middle'%3EWaiting for OBS%3C/text%3E%3C/svg%3E" alt="Preview: what goes live next"></div>
+    </div>
+    <div class="takecol studio-only">
+      <button id="btnTake" class="take" title="Space or Enter">Transition</button>
+      <button id="btnCut" class="btn cut" title="C">Cut</button>
+      <div id="tbar" class="tbar" role="slider" tabindex="0" aria-label="T-bar: drag down to transition by hand" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="tbar-track"></div><div class="tbar-handle"></div></div>
+      <label class="field compact"><span>Transition</span><select id="selTrans"></select></label>
+      <label class="field compact"><span>Duration (ms)</span><input id="inDur" type="number" min="50" max="20000" step="50"></label>
+    </div>
+    <div class="mon mon-program">
+      <div class="mon-label"><span class="tally air">Program</span><span class="mon-name" id="nameProgram">Waiting</span></div>
+      <div class="screen"><img id="imgProgram" width="1280" height="720" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 90'%3E%3Crect width='160' height='90' fill='%23101114'/%3E%3Ctext x='80' y='49' fill='%23C8CCD4' font-family='sans-serif' font-size='7' text-anchor='middle'%3EWaiting for OBS%3C/text%3E%3C/svg%3E" alt="Program: what viewers see"></div>
+      <div class="tprogress" id="transProgress" aria-hidden="true"></div>
+    </div>
+    <div class="quickmode quick-only">
+      <label class="field compact"><span>Transition</span><select id="selTrans2"></select></label>
+      <label class="field compact"><span>Duration (ms)</span><input id="inDur2" type="number" min="50" max="20000" step="50"></label>
+    </div>
+  </section>
+
+  <div class="docks">
+    <section class="dock dock-scenes" aria-labelledby="hScenes">
+      <div class="dock-title"><h2 id="hScenes">Scenes</h2></div>
+      <div class="dock-body"><div id="scenes" class="tiles"></div></div>
+      <div class="dock-foot">
+        <button id="btnNew" class="btn small">Add scene</button>
+        <button id="btnStarter" class="btn small director">Starter scenes</button>
+      </div>
+    </section>
+
+    <section class="dock dock-mixer" aria-labelledby="hMixer">
+      <div class="dock-title"><h2 id="hMixer">Audio Mixer</h2></div>
+      <div class="dock-body"><div id="mixer"></div></div>
+      <div class="dock-foot">
+        <button id="btnCleanMics" class="btn small">Clean up mics</button>
+        <button id="btnProtect" class="btn small">Limit loud spikes</button>
+      </div>
+    </section>
+
+    <section class="dock dock-music" aria-labelledby="hMusic">
+      <div class="dock-title"><h2 id="hMusic">Music</h2></div>
+      <div class="dock-body">
+        <div id="musicRemote" class="tip" hidden></div>
+        <div class="nowplaying">
+          <div class="np-head"><span class="np-src" id="npSrc">Queue empty</span><span id="npTag" class="mtag" hidden aria-describedby="npWhy"></span></div>
+          <div class="np-title" id="npTitle">Nothing playing</div>
+          <div class="sr" id="npWhy"></div>
+          <div id="ytStage" class="yt-stage" hidden></div>
+          <div class="np-bar"><i id="npBar"></i></div>
+          <div class="np-time"><span id="npCur">0:00</span><span id="npLeft"></span></div>
+          <div class="transport">
+            <button class="btn small" id="mPrev">Previous</button>
+            <button class="btn small primary" id="mPlay">Play</button>
+            <button class="btn small" id="mNext">Next</button>
+            <button class="btn small" id="mFade">Fade out</button>
+            <button class="btn small" id="mSpSkip" hidden>Skip inside Spotify</button>
+          </div>
+          <div class="levelline"><span>On stream</span><span class="lvl"><i id="mLevel"></i></span><b id="mLevelTxt">0%</b><span id="mDuckTag" class="tag" hidden>Ducked</span></div>
+        </div>
+        <form class="m-add" id="mAddForm">
+          <label class="sr" for="mAddUrl">YouTube or Spotify link</label>
+          <input id="mAddUrl" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="Paste a YouTube or Spotify link or playlist">
+          <button class="btn small primary" id="mAddBtn" type="submit">Add</button>
+        </form>
+        <div class="row m-opts">
+          <button class="btn small" id="mFolder" type="button">Add music folder</button>
+          <input type="file" id="mFiles" accept="audio/*" multiple hidden>
+          <label class="inline"><input type="checkbox" id="mShuffle"> Shuffle</label>
+          <label class="inline"><input type="checkbox" id="mSkipCopy"> Skip copyrighted songs when moving on by itself</label>
+        </div>
+        <div class="q-head"><span id="qCount">0 songs</span><button class="btn small ghost" id="qClear" type="button" hidden>Clear queue</button></div>
+        <ol id="queue" class="queue" aria-label="Music queue"></ol>
+        <details class="sub" open>
+          <summary>Mix</summary>
+          <label class="field"><span>Music volume <b id="mMasterTxt">80%</b></span><input type="range" id="mMaster" min="0" max="1" step="0.01"></label>
+          <label class="field"><span>Crossfade length: <b id="mXfTxt">6 s</b></span><input type="range" id="mXfade" min="1" max="12" step="0.5"></label>
+          <p class="muted small">Songs from files and YouTube crossfade into each other. Spotify plays in its own app, so turn on Spotify’s Crossfade songs setting for its own playlists.</p>
+        </details>
+        <details class="sub">
+          <summary>Music level per scene</summary>
+          <div id="sceneLevels"></div>
+        </details>
+        <details class="sub">
+          <summary>Duck under talking</summary>
+          <p class="muted small">Music drops while these sources are loud, then comes back.</p>
+          <div id="duckSources"></div>
+          <label class="field"><span>Duck to <b id="mDuckTxt">30%</b></span><input type="range" id="mDuckDepth" min="0.05" max="0.8" step="0.05"></label>
+        </details>
+        <details class="sub">
+          <summary>Copyright tags</summary>
+          <p class="muted small">Every song gets a tag from its file details, YouTube channel and title, or source. Copyrighted songs still play. The tag only warns you. It can’t promise a song is safe: only Facebook decides, and it can mute or end a stream over copyrighted music.</p>
+          <div class="row">
+            <button class="btn small" data-open="https://www.facebook.com/sound/collection">Facebook Sound Collection</button>
+            <button class="btn small" data-open="https://www.streambeats.com">StreamBeats</button>
+            <button class="btn small" data-open="https://ncs.io">NCS</button>
+          </div>
+        </details>
+        <p class="muted small" id="musicRoute">Music plays from this PC into OBS through Desktop Audio. Keep Desktop Audio unmuted.</p>
+      </div>
+    </section>
+
+    <section class="dock dock-show" aria-label="Show">
+      <div class="tabs" role="tablist">
+        <button role="tab" data-tab="score" aria-selected="true">Scores</button>
+        <button role="tab" data-tab="live" aria-selected="false">Stream key</button>
+        <button role="tab" data-tab="check" aria-selected="false">Checklist</button>
+        <button role="tab" data-tab="log" aria-selected="false">Log</button>
+      </div>
+      <div class="dock-body">
+        <div class="panel" data-panel="score">
+          <div id="scoreBox"></div>
+          <h3 class="subhead">Other text on screen</h3>
+          <div id="textBox"></div>
+        </div>
+        <div class="panel" data-panel="live" hidden>
+          <p class="director-only-note muted small">Only the Director role can change the stream key.</p>
+          <div class="director">
+            <button class="btn primary big" id="btnGetKey">Get stream key from Facebook</button>
+            <ol class="steps-text">
+              <li>In Live Producer, post as your org’s <b>Page</b> and pick <b>Streaming software</b>.</li>
+              <li>Copy the <b>Stream key</b>, paste it below and save.</li>
+              <li>Press <b>Start streaming</b>. When Facebook shows the preview, press <b>Go live</b> in Facebook too.</li>
+            </ol>
+            <label class="field"><span>Stream key</span>
+              <span class="row"><input id="fbKey" type="password" autocomplete="off" spellcheck="false" placeholder="Paste the key from Facebook" class="grow"><button class="btn small" id="fbShow" type="button">Show</button></span></label>
+            <div class="row"><button class="btn primary small" id="btnFbSend">Save key to OBS</button><span id="fbStatus" class="muted small"></span></div>
+            <details class="sub"><summary>Server URL</summary>
+              <label class="field"><span>Server</span><input id="fbServer" value="rtmps://live-api-s.facebook.com:443/rtmp/" autocomplete="off"></label></details>
+            <p class="muted small">The key goes straight into OBS. JhemsStream never saves it.</p>
+          </div>
+        </div>
+        <div class="panel" data-panel="check" hidden>
+          <div class="row"><span id="checkCount" class="grow muted small"></span><button id="btnCheckReset" class="btn small">Reset</button></div>
+          <div id="checklist"></div>
+        </div>
+        <div class="panel" data-panel="log" hidden><div id="log" class="log"></div></div>
+      </div>
+    </section>
+
+    <section class="dock dock-controls" aria-labelledby="hControls">
+      <div class="dock-title"><h2 id="hControls">Controls</h2></div>
+      <div class="dock-body controls">
+        <button id="btnLive" class="btn live director">Start streaming</button>
+        <button id="btnRec" class="btn director">Start recording</button>
+        <button id="btnStudio" class="btn" aria-pressed="true">Studio Mode</button>
+        <button class="btn" id="btnSettings2">Settings</button>
+        <div class="quality-box">
+          <span class="muted small">Stream quality</span>
+          <span id="qualitySummary" class="small">Loading from OBS</span>
+          <button class="btn small" id="btnQuality">Change quality</button>
+        </div>
+        <p class="muted small keys">Keys: 1 to 9 pick a scene, Space transitions, C cuts.</p>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="statusbar">
+  <span id="connPill" class="pill ok">OBS connected</span>
+  <span class="onair" id="onair" hidden><span class="onair-dot" aria-hidden="true"></span>LIVE <span id="liveTime">00:00:00</span></span>
+  <span class="spacer"></span>
+  <div class="stats">
+    <span id="sDrop">Dropped frames <b>off air</b></span>
+    <span id="sBitrate">Bitrate <b>off air</b></span>
+    <span id="sCpu">CPU <b>…</b></span>
+    <span id="sFps">FPS <b>…</b></span>
+  </div>
+</footer>
+</div>
+
+<dialog id="dlgSettings" class="settings" aria-labelledby="setTitle">
+  <div class="set-head"><h2 id="setTitle">Settings</h2><button class="btn ghost icon" id="setClose" aria-label="Close settings"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div class="set-body">
+    <nav class="set-nav" aria-label="Settings sections">
+      <label class="set-search"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg><input type="search" id="setSearch" placeholder="Search" aria-label="Search settings"></label>
+      <div class="set-links" id="setLinks"></div>
+      <span class="spacer"></span>
+      <button class="set-foot" data-open="https://github.com/jherobred/JhemsStream">Source code on GitHub<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></button>
+    </nav>
+    <div class="set-main" id="setMain"></div>
+  </div>
+</dialog>
+
+<dialog id="dlgHelp" class="help">
+  <div id="helpBody"></div>
+  <div class="dots" id="helpDots"></div>
+  <div class="dlg-foot"><span class="spacer"></span><button class="btn" id="helpBack">Back</button><button class="btn primary" id="helpNext">Next</button></div>
+</dialog>
+
+<script src="vendor/obs-ws.global.js"></script>
+<script src="music.js"></script>
+<script src="app.js"></script>
+<script src="musicui.js"></script>
+<script src="quality.js"></script>
+<script src="settings.js"></script>
+<script src="editor.js"></script>
+<script src="setup.js"></script>
+</body>
+</html>

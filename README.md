@@ -1,52 +1,56 @@
 # JhemsStream
 
-A simple control panel for OBS, built for volunteer crews running a livestream: school org events, esports tournaments, church streams.
+A companion control panel for OBS, built for small volunteer crews running a livestream: school org events, esports tournaments, church streams. It looks and works like a sibling of OBS, so anyone who has seen OBS feels at home, and anyone who hasn't can still run the show.
 
-OBS does the video and sends it to Facebook (or YouTube, or Twitch). JhemsStream gives your team big, clear buttons to run the show without learning OBS.
+OBS does the video and sends it to Facebook (or YouTube, or Twitch). JhemsStream gives your crew Studio Mode switching, music that crossfades by itself, a scoreboard and one-click OBS setup.
+
+## Download
+
+Get `JhemsStream_<version>_x64-setup.exe` from [Releases](https://github.com/jherobred/JhemsStream/releases/latest) and run it. After that, the app updates itself: when a new version is out, an **Update** button appears in the menu bar.
 
 ## Features
 
-- **Preview → TAKE** switching with live thumbnails of every screen, like a real broadcast switcher. Number keys 1–9 pick a screen, Space takes it live, C cuts.
-- **Instant mode** for one-click switching when you don't need a preview.
-- **Transitions**: pick any transition set up in OBS (Fade, Swipe, Slide, Luma Wipe, Stinger) and set its duration.
-- **+ New screen**: add a monitor, a window, a game, a camera or capture card, a web overlay, or a video or image file. JhemsStream scales it to fit, or puts it in a corner as a facecam.
-- **Starter screens** in one click: Starting Soon, Main Game with a scoreboard, Casters, Break, Ending. Safe to run twice.
-- **Scoreboard**: team names, +/− scores, swap sides.
-- **Audio mixer**: live level meters, mute, and volume for every source.
-- **Facebook Live**: paste the stream key and send it to OBS. The key is never saved by JhemsStream.
-- **Health bar**: bitrate, dropped frames, FPS, and CPU, with color warnings.
-- **Pre-show checklist** and a **step-by-step guide** for first-time volunteers.
-- **Volunteer mode** hides Go Live, End Stream, the stream key, and delete buttons.
-- One HTML file and one vendored library. No install, no build, no internet needed.
+- **Studio Mode switching**: Preview and Program side by side with live thumbnails, a Transition button, Cut, and a T-bar you can drag to transition by hand. Keys 1 to 9 pick a scene, Space transitions, C cuts.
+- **One-click OBS setup** (desktop app): finds OBS, installs it with winget if it's missing, turns on its remote control, adds Swipe, Slide and Luma Wipe transitions, opens it and connects. No password typing on the streaming PC.
+- **Discord screen share as a source**: pick the Discord stream window and its sound, then crop it in the scene editor.
+- **Music**: a queue of local files, YouTube links and playlists, and Spotify links. Songs crossfade over a length you choose, even when someone presses Next mid-song. Music gets quieter on gameplay scenes and ducks under the casters' mics.
+- **Copyright tagging**: every song is tagged as likely copyrighted, royalty-free source, or unknown, from its tags or channel. You can still play anything. Only Facebook decides what gets muted.
+- **Audio tools**: mixer with live meters, fade-mute, headphone monitoring, one-click mic cleanup (noise removal, compressor, limiter) and a limiter against loud spikes.
+- **Scoreboard**: team names, scores, swap sides.
+- **Facebook Live**: a button that opens Live Producer, a field for the stream key that goes straight into OBS. JhemsStream never saves the key.
+- **Crew roles**: Director, Switcher, Audio and music, Scores. Helpers on other laptops connect to the same OBS, and only the Director can start or stop the stream.
+- **Settings**: dark (default, like OBS), light or system theme, compact view, and everything else in one searchable window.
+- Pre-stream checklist, a six-step guide for new crew members, status bar with dropped frames, bitrate, CPU and FPS.
 
-## Quick start
+## Using it from another laptop
 
-1. Install [OBS Studio](https://obsproject.com) 28 or newer.
-2. In OBS: **Tools → WebSocket Server Settings** → tick **Enable WebSocket server** → **Show Connect Info**. Keep that window open.
-3. Download this repo (Code → Download ZIP) and unzip it.
-4. Double-click `index.html`. It opens in your browser.
-5. Enter `localhost`, port `4455`, and the password from step 2. Press **Connect**.
-
-### Control from another laptop
-
-Copy the JhemsStream folder to the other laptop. Make sure both machines are on the same network. Open `index.html` there and enter the **Server IP** from OBS's Connect Info instead of `localhost`. Windows may ask to allow OBS through the firewall. Allow it on private networks.
+Install the same app on the other laptop (or open `web/index.html` in a browser). On the streaming PC, open OBS, then **Tools > WebSocket Server Settings > Show Connect Info**. Enter that IP and password in JhemsStream. Both laptops must be on the same network.
 
 ## Going live on Facebook
 
-1. Open [Facebook Live Producer](https://www.facebook.com/live/producer). Post as your Page and choose **Streaming software**.
-2. Copy the **Stream key**. In JhemsStream, open the **Facebook** tab, paste the key, and press **Send to OBS**.
-3. Put **Starting Soon** live, then press **GO LIVE** in JhemsStream.
-4. When Facebook shows your preview, press **Go live** in Facebook too.
+1. In JhemsStream, open the **Stream key** tab and press **Get stream key from Facebook**.
+2. In Live Producer, post as your Page, choose **Streaming software** and copy the stream key.
+3. Paste it and press **Save key to OBS**.
+4. Put Starting Soon on Program and press **Start streaming**. When Facebook shows the preview, press **Go live** in Facebook too.
 
-Do a private test first by setting the Facebook audience to **Only me**.
+Do a private test first with the Facebook audience set to **Only me**.
 
-## Adding fancier transitions
+## Building from source
 
-The OBS WebSocket API can choose transitions but can't create them. Add a transition once in OBS: find the **Scene Transitions** dock, press **+**, then pick Swipe, Slide, Luma Wipe, or **Stinger** (an animated video wipe, often a team or event logo). It appears in JhemsStream right away.
+Needs Node 18+, Rust and the Tauri prerequisites for Windows.
+
+```bash
+npm install
+npm run dev
+```
+
+Releases are built and published with `scripts/release.ps1 -Publish -Notes "<notes>"`, which signs the update with the key in `~/.tauri/jhemsstream.key` (never committed).
 
 ## How it works
 
-JhemsStream talks to OBS through [obs-websocket](https://github.com/obsproject/obs-websocket), which is built into OBS 28+. It uses the [obs-websocket-js](https://github.com/obs-websocket-community-projects/obs-websocket-js) client, vendored in `vendor/` so it works offline.
+The UI is plain HTML, CSS and JavaScript in `web/`, wrapped by Tauri 2 (`src-tauri/`) for the Windows app, OBS setup, per-app volume and updates. It talks to OBS through [obs-websocket](https://github.com/obsproject/obs-websocket), built into OBS 28+, using the vendored [obs-websocket-js](https://github.com/obs-websocket-community-projects/obs-websocket-js) client.
+
+JhemsStream is an independent project and is not affiliated with the OBS Project.
 
 ## License
 
