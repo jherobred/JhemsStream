@@ -45,6 +45,9 @@
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html,body{margin:0;overflow-x:clip}
+/* the console never scrolls as a page: lock the viewport and contain abs-positioned helpers (.sr labels) */
+html{height:100%;overflow:hidden}
+.dock-body{position:relative}
 body{min-height:100vh;background:var(--ground);color:var(--text);font:var(--fs-body)/1.4 var(--font);-webkit-font-smoothing:antialiased}
 ::selection{background:var(--accent-strong);color:var(--on-accent)}
 input,select,textarea{caret-color:var(--accent)}
@@ -274,8 +277,8 @@ details.sub{border-top:1px solid var(--rule);padding:var(--s2) 0}
 details.sub summary{font-weight:600;list-style:none;display:flex;align-items:center;gap:var(--s2);min-height:24px}
 details.sub summary::before{content:"";width:6px;height:6px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(-45deg);transition:transform var(--dur-short) var(--ease)}
 details.sub[open] summary::before{transform:rotate(45deg)}
-.lvlrow{display:grid;grid-template-columns:minmax(0,1fr) 110px 40px;gap:var(--s2);align-items:center;padding:2px 0;font-size:var(--fs-small)}
-.lvlrow b{text-align:right;font-variant-numeric:tabular-nums}
+.lvlrow{display:grid;grid-template-columns:minmax(0,1fr) 110px 62px;gap:var(--s2);align-items:center;padding:2px 0;font-size:var(--fs-small)}
+.lvlrow .pct{display:flex;align-items:center;gap:2px}.lvlrow .pct input{width:46px;min-height:var(--h-small);padding:0 4px;text-align:right;font-variant-numeric:tabular-nums}
 
 /* scores */
 .scorecard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s2);align-items:center;padding:var(--s2) 0;border-bottom:1px solid var(--rule)}

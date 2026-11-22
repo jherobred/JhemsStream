@@ -59,7 +59,7 @@ function openExt(url) { if (window.Setup?.open) Setup.open(url); else window.ope
 /* ---------- connection ---------- */
 let pendingConnect = null;
 function connect({ host = "localhost", port = 4455, password = "" } = {}) {
-  S.host = host;
+  S.host = host; S.port = port; S.pw = password;
   return new Promise(async (resolve, reject) => {
     pendingConnect = { resolve, reject };
     try {
@@ -466,10 +466,12 @@ const sceneLevel = n => { const m = store.get("sceneLevels", {}); return n in m 
 function renderSceneLevels() {
   const box = $("#sceneLevels"); box.textContent = "";
   for (const n of S.scenes) {
-    const r = h("input", { type: "range", min: 0, max: 1, step: 0.05, value: sceneLevel(n), "aria-label": `Music level on ${n}` });
-    const lbl = h("b", {}, Math.round(sceneLevel(n) * 100) + "%");
-    r.addEventListener("input", () => { const m = store.get("sceneLevels", {}); m[n] = +r.value; store.set("sceneLevels", m); lbl.textContent = Math.round(r.value * 100) + "%"; if (n === S.program) Music.setScene(+r.value); });
-    box.append(h("label", { class: "lvlrow" }, h("span", {}, n), r, lbl));
+    const r = h("input", { type: "range", min: 0, max: 1, step: 0.01, value: sceneLevel(n), "aria-label": `Music level on ${n}` });
+    const num = h("input", { type: "number", min: 0, max: 100, step: 1, value: Math.round(sceneLevel(n) * 100), "aria-label": `Music level on ${n}, percent` });
+    const apply = v => { v = Math.max(0, Math.min(1, v)); const m = store.get("sceneLevels", {}); m[n] = v; store.set("sceneLevels", m); if (n === S.program) Music.setScene(v); };
+    r.addEventListener("input", () => { num.value = Math.round(r.value * 100); apply(+r.value); });
+    num.addEventListener("input", () => { if (num.value === "") return; r.value = num.value / 100; apply(num.value / 100); });
+    box.append(h("div", { class: "lvlrow" }, h("span", {}, n), r, h("span", { class: "pct" }, num, "%")));
   }
   if (S.program) Music.setScene(sceneLevel(S.program), 0.3);
 }
@@ -570,6 +572,52 @@ $("#btnStarter").addEventListener("click", async () => {
     toast("Starter scenes ready. Next: Edit on Main Game, then Add source, then Discord screen share.");
   } catch (e) { toast("Starter screens stopped: " + e.message, "bad"); }
   await refreshScenes(); refreshInputs();
+});
+/* ---------- SITE look: Ready Player SITE graphics as browser sources over the plain text ----------
+   The text inputs stay as the data (the Scores tab still edits them); they're only hidden. */
+const LOOK = [
+  ...["Starting Soon", "Break", "Ending", "Casters"].map(sc => ({ scene: sc, kind: "title", src: `${sc} Title`, hide: [`${sc} Title`] })),
+  { scene: "Scoreboard", kind: "scoreboard", hide: ["Scoreboard Bar", ...Object.values(SB)] },
+];
+const lookName = sc => `SITE ${sc} Graphic`;
+async function itemId(scene, source) { try { return (await obs.call("GetSceneItemId", { sceneName: scene, sourceName: source })).sceneItemId; } catch { return null; } }
+$("#btnSiteLook").addEventListener("click", async () => {
+  if (!window.__TAURI__) return toast("The SITE look needs the desktop app on the streaming PC.", "warn");
+  const inputs = new Set((await call("GetInputList")).inputs.map(i => i.inputName));
+  const on = LOOK.some(l => inputs.has(lookName(l.scene)));
+  if (on) {
+    if (!confirm("Remove the Ready Player SITE graphics and show the plain text again?")) return;
+    for (const l of LOOK) {
+      if (inputs.has(lookName(l.scene))) await call("RemoveInput", { inputName: lookName(l.scene) });
+      for (const n of l.hide) { const id = await itemId(l.scene, n); if (id != null) await call("SetSceneItemEnabled", { sceneName: l.scene, sceneItemId: id, sceneItemEnabled: true }); }
+    }
+    toast("Plain text is back.");
+    return;
+  }
+  if (!confirm("Add the Ready Player SITE graphics to Starting Soon, Break, Ending, Casters and the Scoreboard? Your backgrounds and layout stay. The plain text is hidden, not deleted, and the Scores tab keeps working. Press this button again to undo.")) return;
+  try {
+    const dir = String(await window.__TAURI__.core.invoke("stinger_dir")).replace(/\\/g, "/").replace(/\/+$/, "");
+    const base = "file:///" + encodeURI(dir) + "/overlay.html#";
+    const { w, h: H } = S.canvas;
+    let done = 0;
+    for (const l of LOOK) {
+      if (!S.scenes.includes(l.scene)) continue;
+      const q = new URLSearchParams({ kind: l.kind, port: S.port || 4455, pw: S.pw || "" });
+      if (l.kind === "title") {
+        const id = await itemId(l.scene, l.src); if (id == null) continue;
+        const tr = (await call("GetSceneItemTransform", { sceneName: l.scene, sceneItemId: id })).sceneItemTransform;
+        q.set("src", l.src); q.set("t", textOf(l.src) ?? ""); q.set("y", (tr.positionY / H).toFixed(3));
+      }
+      const settings = { url: base + q, width: w, height: H, fps: 60, shutdown: false, restart_when_active: false, reroute_audio: false };
+      const name = lookName(l.scene);
+      const { sceneItemId } = await call("CreateInput", { sceneName: l.scene, inputName: name, inputKind: "browser_source", inputSettings: settings });
+      const n = (await call("GetSceneItemList", { sceneName: l.scene })).sceneItems.length;
+      await call("SetSceneItemIndex", { sceneName: l.scene, sceneItemId, sceneItemIndex: n - 1 });
+      for (const hn of l.hide) { const id = await itemId(l.scene, hn); if (id != null) await call("SetSceneItemEnabled", { sceneName: l.scene, sceneItemId: id, sceneItemEnabled: false }); }
+      done++;
+    }
+    toast(done ? `SITE look added to ${done} screen${done > 1 ? "s" : ""}.` : "No starter screens found. Press Starter scenes first.", done ? "ok" : "warn");
+  } catch (e) { toast("SITE look stopped: " + e.message, "bad"); }
 });
 $("#btnNew").addEventListener("click", () => window.Editor?.openNew());
 

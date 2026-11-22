@@ -1,0 +1,168 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Code Rain stinger</title>
+<style>html,body{margin:0;background:transparent}canvas{display:block}</style>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+"use strict";
+/* Code Rain stinger, rendered offline frame by frame (render.mjs). A wall of green voxel cubes
+   flies in from the right behind a band of falling code, covers the cut, then breaks apart and
+   falls away into the distance from the left. Deterministic: frame(t) depends only on t. */
+const W = 1920, H = 1080, TILE = 60, COLS = W / TILE, ROWS = H / TILE, F = 1500;
+const IN_SPREAD = 0.40, IN_DUR = 0.30, OUT_START = 0.92, OUT_SPREAD = 0.38, OUT_DUR = 0.36;
+const params = new URLSearchParams(location.search);
+const TITLE = params.get("title") || "";
+const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+const mk = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
+const rain = mk(W, H), rc = rain.getContext("2d");
+const tex = mk(W, H), tc = tex.getContext("2d");
+const band = mk(W, H), bc = band.getContext("2d");
+const glow = mk(W / 4, H / 4), gc = glow.getContext("2d");
+
+let seed = 7;
+const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+const hash = (a, b, c) => { let x = (a * 374761393 + b * 668265263 + c * 2147483647) >>> 0; x = ((x ^ (x >>> 13)) * 1274126177) >>> 0; return (x ^ (x >>> 16)) >>> 0; };
+const GLYPHS = "01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン0123456789SITE<>/=+*#".split("");
+const clamp = v => Math.max(0, Math.min(1, v));
+const easeOut = x => 1 - Math.pow(1 - x, 3);
+const easeIn = x => x * x * x;
+
+/* rain columns */
+const COLW = 20, cols = [];
+for (let j = 0; j < W / COLW; j++) for (let k = 0; k < 2; k++)
+  cols.push({ j, v: 900 + rnd() * 1100, o: rnd() * 2000, len: 10 + Math.floor(rnd() * 18) });
+function drawRain(t) {
+  rc.clearRect(0, 0, W, H);
+  rc.font = `bold ${COLW}px "MS Gothic","Consolas",monospace`; rc.textAlign = "center"; rc.textBaseline = "top";
+  for (const c of cols) {
+    const span = H + c.len * COLW;
+    const head = (c.o + c.v * t) % span;
+    for (let k = 0; k < c.len; k++) {
+      const y = head - k * COLW; if (y < -COLW || y > H) continue;
+      const g = GLYPHS[hash(c.j, Math.floor(y / COLW), Math.floor(t * 14 + k)) % GLYPHS.length];
+      const a = Math.pow(1 - k / c.len, 1.6);
+      rc.fillStyle = k === 0 ? `rgba(225,255,230,${a})` : `rgba(43,255,106,${a * 0.85})`;
+      rc.fillText(g, c.j * COLW + COLW / 2, y);
+    }
+  }
+}
+
+/* the cube wall's face texture: dark phosphor green, scanlines, rain, optional title */
+function drawTex(t) {
+  const g = tc.createRadialGradient(W / 2, H / 2, 80, W / 2, H / 2, W * 0.7);
+  g.addColorStop(0, "#0d3a1a"); g.addColorStop(1, "#03130a");
+  tc.globalCompositeOperation = "source-over"; tc.fillStyle = g; tc.fillRect(0, 0, W, H);
+  tc.drawImage(rain, 0, 0);
+  tc.fillStyle = "rgba(0,0,0,0.22)"; for (let y = 0; y < H; y += 4) tc.fillRect(0, y, W, 2);
+  if (TITLE && t > 0.42) {
+    const a = clamp((t - 0.42) / 0.12), jit = (hash(Math.floor(t * 60), 3, 9) % 9) - 4;
+    tc.save(); tc.globalAlpha = a; tc.textAlign = "center"; tc.textBaseline = "middle";
+    tc.font = `170px Impact,"Bahnschrift",sans-serif`;
+    tc.lineJoin = "round"; tc.lineWidth = 14; tc.strokeStyle = "#062b12"; tc.strokeText(TITLE, W / 2, H / 2);
+    tc.fillStyle = "rgba(255,60,90,.55)"; tc.fillText(TITLE, W / 2 - 5 + jit, H / 2);
+    tc.fillStyle = "rgba(60,220,255,.45)"; tc.fillText(TITLE, W / 2 + 5 - jit, H / 2);
+    tc.fillStyle = "#f6ea4a"; tc.fillText(TITLE, W / 2, H / 2);
+    tc.restore();
+  }
+}
+
+/* cubes */
+const cubes = [];
+for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+  const x = c * TILE + TILE / 2, y = r * TILE + TILE / 2;
+  cubes.push({ c, r, x, y,
+    tin: (1 - x / W) * IN_SPREAD + rnd() * 0.06,
+    tout: OUT_START + (x / W) * OUT_SPREAD + rnd() * 0.07,
+    ax: (rnd() - 0.5) * 3, ay: 1.5 + rnd() * 2, az: (rnd() - 0.5) * 1.5,
+    dx: 120 + rnd() * 260, dy: (rnd() - 0.5) * 260, zin: 500 + rnd() * 500,
+    ox: (rnd() - 0.5) * 300, oy: -120 - rnd() * 300, zout: 1200 + rnd() * 1600 });
+}
+const S = TILE / 2;
+const V = [[-S,-S, S],[ S,-S, S],[ S, S, S],[-S, S, S],[-S,-S,-S],[ S,-S,-S],[ S, S,-S],[-S, S,-S]];
+// faces as vertex indices (front = +z, toward the viewer) with outward normals
+const FACES = [
+  { i: [0,1,2,3], n: [0,0,1], front: true },
+  { i: [1,5,6,2], n: [1,0,0] }, { i: [4,0,3,7], n: [-1,0,0] },
+  { i: [4,5,1,0], n: [0,-1,0] }, { i: [3,2,6,7], n: [0,1,0] },
+];
+function rot([x, y, z], a, b, g) {
+  let c = Math.cos(a), s = Math.sin(a); [y, z] = [y * c - z * s, y * s + z * c];
+  c = Math.cos(b); s = Math.sin(b); [x, z] = [x * c + z * s, -x * s + z * c];
+  c = Math.cos(g); s = Math.sin(g); [x, y] = [x * c - y * s, x * s + y * c];
+  return [x, y, z];
+}
+const proj = (x, y, z) => { const k = F / (F - z); return [W / 2 + (x - W / 2) * k, H / 2 + (y - H / 2) * k, k]; };
+
+function cubeState(cb, t) {
+  if (t < cb.tin) return null;
+  if (t < cb.tin + IN_DUR) {
+    const p = easeOut((t - cb.tin) / IN_DUR), q = 1 - p;
+    return { x: cb.x + cb.dx * q, y: cb.y + cb.dy * q, z: cb.zin * q, a: cb.ax * q, b: cb.ay * q, g: cb.az * q, alpha: clamp(p * 3), edge: 0.9 * q + 0.12 };
+  }
+  if (t < cb.tout) return { x: cb.x, y: cb.y, z: 0, a: 0, b: 0, g: 0, alpha: 1, edge: 0.12, settled: true };
+  const p = (t - cb.tout) / OUT_DUR; if (p >= 1) return null;
+  const e = easeIn(p);
+  return { x: cb.x + cb.ox * e, y: cb.y + cb.oy * e + 400 * e * e, z: -cb.zout * e, a: -cb.ax * e * 1.4, b: -cb.ay * e, g: cb.az * e, alpha: 1 - clamp((p - 0.45) / 0.55), edge: 0.12 + 0.8 * Math.min(1, p * 4) };
+}
+
+function drawCube(cb, st) {
+  const pts = V.map(v => { const [x, y, z] = rot(v, st.a, st.b, st.g); return [st.x + x, st.y + y, st.z + z]; });
+  const P = pts.map(p => proj(...p));
+  const faces = [];
+  for (const f of (st.settled ? FACES.slice(0, 1) : FACES)) {
+    const n = rot(f.n, st.a, st.b, st.g);
+    const c = f.i.reduce((m, i) => [m[0] + pts[i][0] / 4, m[1] + pts[i][1] / 4, m[2] + pts[i][2] / 4], [0, 0, 0]);
+    const toCam = [W / 2 - c[0], H / 2 - c[1], F - c[2]];
+    if (n[0] * toCam[0] + n[1] * toCam[1] + n[2] * toCam[2] <= 0) continue;
+    faces.push({ f, n, z: c[2] });
+  }
+  faces.sort((a, b) => a.z - b.z);
+  ctx.globalAlpha = st.alpha;
+  for (const { f, n } of faces) {
+    const q = f.i.map(i => P[i]);
+    const light = clamp(0.35 + 0.65 * (n[2] * 0.8 - n[1] * 0.35 + n[0] * 0.2));
+    if (f.front) {
+      // affine-map the wall texture onto the front face (1 px overlap hides seams on the settled wall)
+      const [p0, p1, , p3] = q, o = st.settled ? 0.75 : 0;
+      ctx.save();
+      ctx.setTransform((p1[0] - p0[0]) / TILE, (p1[1] - p0[1]) / TILE, (p3[0] - p0[0]) / TILE, (p3[1] - p0[1]) / TILE, p0[0], p0[1]);
+      ctx.drawImage(tex, cb.c * TILE, cb.r * TILE, TILE, TILE, -o, -o, TILE + 2 * o, TILE + 2 * o);
+      ctx.restore();
+      if (light < 0.98) { path(q); ctx.fillStyle = `rgba(0,10,4,${(1 - light) * 0.8})`; ctx.fill(); }
+    } else {
+      path(q); ctx.fillStyle = `hsl(140,80%,${6 + light * 22}%)`; ctx.fill();
+    }
+    path(q); ctx.strokeStyle = `rgba(110,255,150,${st.edge})`; ctx.lineWidth = 1.2; ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+function path(q) { ctx.beginPath(); ctx.moveTo(q[0][0], q[0][1]); for (let i = 1; i < 4; i++) ctx.lineTo(q[i][0], q[i][1]); ctx.closePath(); }
+
+/* falling code just ahead of the incoming wall, and trailing behind the outgoing one */
+function drawBand(x0, x1, alpha) {
+  bc.globalCompositeOperation = "source-over"; bc.clearRect(0, 0, W, H); bc.drawImage(rain, 0, 0);
+  const g = bc.createLinearGradient(x0, 0, x1, 0);
+  g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, `rgba(0,0,0,${alpha})`);
+  bc.globalCompositeOperation = "destination-in"; bc.fillStyle = g; bc.fillRect(0, 0, W, H);
+  ctx.drawImage(band, 0, 0);
+}
+
+function frame(t) {
+  drawRain(t); drawTex(t);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W, H);
+  // entering wall front moves right -> left; leaving front moves left -> right
+  const fin = W * (1 - t / IN_SPREAD);
+  if (t < IN_SPREAD + 0.12) drawBand(fin - 420, fin, clamp(1 - (t - IN_SPREAD) / 0.12));
+  const live = [];
+  for (const cb of cubes) { const st = cubeState(cb, t); if (st) live.push([cb, st]); }
+  live.sort((a, b) => a[1].z - b[1].z);
+  for (const [cb, st] of live) drawCube(cb, st);
+  const tl = t - OUT_START;
+  if (tl > 0 && tl < OUT_SPREAD + 0.25) { const fx = W * (tl / OUT_SPREAD); drawBand(fx + 380, fx - 40, clamp(1 - (tl - OUT_SPREAD) / 0.25) * 0.9); }
+  // soft bloom
+  gc.clearRect(0, 0, glow.width, glow.height); gc.filter = "blur(6px)"; gc.drawImage(cv, 0, 0, glow.width, glow.height); gc.filter = "none";
+  ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = 0.4; ctx.drawImage(glow, 0, 0, W, H); ctx.restore();
+}
+window.render = (i, fps) => { frame(i / fps); return cv.toDataURL("image/png"); };
+window.coverage = (i, fps) => { frame(i / fps); const d = ctx.getImageData(0, 0, W, H).data; let n = 0; for (let k = 3; k < d.length; k += 4) if (d[k] > 250) n++; return n / (W * H); };
+</script>

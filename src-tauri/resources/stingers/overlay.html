@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>JhemsStream overlay</title>
+<!-- Ready Player SITE on-stream graphics, loaded by an OBS browser source.
+     URL hash: kind=scoreboard|title, src=<text input>, t=<fallback text>, y=<0..1>, port, pw.
+     The words come from OBS text inputs (the ones the Scores tab edits) over obs-websocket. -->
+<style>
+:root{--yellow:#f6ea4a;--yellow-hot:#fff7a0;--green:#2bff6a;--label:#1d7a2f;--label-dark:#0f4a1b;--ink:#05200d;--crt:#04120a}
+html,body{margin:0;background:transparent;overflow:hidden}
+.stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;font-family:Impact,"Bahnschrift Condensed","Arial Narrow",sans-serif;color:var(--yellow)}
+.outline{text-shadow:0 0 0 var(--ink),3px 3px 0 var(--ink),-3px 3px 0 var(--ink),3px -3px 0 var(--ink),-3px -3px 0 var(--ink),0 4px 0 var(--ink),0 -4px 0 var(--ink),4px 0 0 var(--ink),-4px 0 0 var(--ink),0 0 26px rgba(43,255,106,.55)}
+
+/* ---------- scoreboard: two VHS labels and a cassette ---------- */
+.sb>*{flex:none}
+.sb{position:absolute;top:26px;left:0;right:0;display:flex;justify-content:center;align-items:stretch;gap:0;filter:drop-shadow(0 10px 22px rgba(0,0,0,.55))}
+.team{position:relative;width:500px;height:92px;display:flex;align-items:center;justify-content:center;padding:0 26px;box-sizing:border-box;
+  background:linear-gradient(180deg,#2a9a3c 0%,var(--label) 45%,var(--label-dark) 100%);border:3px solid var(--ink)}
+.team::before{content:"";position:absolute;inset:6px;border:2px solid rgba(246,234,74,.55);pointer-events:none}
+.team::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.14) 0 2px,transparent 2px 4px);pointer-events:none}
+.team.a{border-radius:14px 0 0 14px;clip-path:polygon(0 0,100% 0,100% 100%,22px 100%,0 calc(100% - 22px))}
+.team.b{border-radius:0 14px 14px 0;clip-path:polygon(0 0,100% 0,100% calc(100% - 22px),calc(100% - 22px) 100%,0 100%)}
+.tname{font-size:50px;line-height:1;letter-spacing:1px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:clip;max-width:100%}
+.score{position:relative;width:104px;height:92px;display:grid;place-items:center;background:radial-gradient(ellipse at 50% 45%,#0e3a1c 0%,var(--crt) 75%);border-top:3px solid var(--ink);border-bottom:3px solid var(--ink);box-shadow:inset 0 0 22px rgba(43,255,106,.35)}
+.score::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.35) 0 2px,transparent 2px 4px);pointer-events:none}
+.score b{font-weight:400;font-size:76px;line-height:1;color:var(--yellow);text-shadow:0 0 14px rgba(246,234,74,.75),0 0 3px #fff8b0}
+.score.bump b{animation:bump .7s cubic-bezier(.2,.9,.3,1.2)}
+.score.bump{animation:flash .7s ease-out}
+@keyframes bump{0%{transform:scale(1.7) skewX(-8deg);filter:blur(2px)}25%{transform:translateX(4px) scale(1.2)}40%{transform:translateX(-3px)}100%{transform:none;filter:none}}
+@keyframes flash{0%{box-shadow:inset 0 0 80px rgba(246,234,74,.9)}100%{box-shadow:inset 0 0 22px rgba(43,255,106,.35)}}
+.cassette{position:relative;width:236px;height:92px;box-sizing:border-box;background:linear-gradient(180deg,#1b1d1b,#0b0c0b);border:3px solid var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.window{position:relative;width:176px;height:44px;border-radius:22px;background:linear-gradient(180deg,#2f3a33,#151a17);box-shadow:inset 0 2px 6px rgba(0,0,0,.8);display:flex;align-items:center;justify-content:space-between;padding:0 8px;box-sizing:border-box}
+.reel{width:34px;height:34px;border-radius:50%;background:radial-gradient(circle,#0b0c0b 0 5px,#d9dcd4 6px 11px,transparent 12px),conic-gradient(#cfd3ca 0 20deg,#555 20deg 120deg,#cfd3ca 120deg 140deg,#555 140deg 240deg,#cfd3ca 240deg 260deg,#555 260deg 360deg);animation:spin 2.4s linear infinite}
+.tape{flex:1;height:18px;margin:0 6px;background:linear-gradient(180deg,#3b2a1c,#1d140d);border-radius:3px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.brand{font-size:19px;letter-spacing:2px;color:var(--yellow);line-height:1}
+.brand i{font-style:normal;color:var(--green)}
+
+/* ---------- title card ---------- */
+.title{position:absolute;left:0;right:0;display:flex;flex-direction:column;align-items:center;transform:translateY(-50%)}
+.big{position:relative;font-size:170px;line-height:.95;letter-spacing:2px;text-transform:uppercase;text-align:center;white-space:nowrap}
+.big .rgb{position:absolute;inset:0;mix-blend-mode:screen;opacity:.55}
+.big .r{color:#ff3c5a;transform:translateX(-5px);text-shadow:none}
+.big .c{color:#3cdcff;transform:translateX(5px);text-shadow:none}
+.big .main{position:relative}
+.ticket{margin-top:26px;transform:rotate(-4deg);padding:12px 30px 10px;background:linear-gradient(180deg,#2a9a3c,var(--label-dark));border:3px solid var(--ink);outline:2px dashed rgba(246,234,74,.6);outline-offset:-10px;font-size:38px;letter-spacing:2px;box-shadow:0 10px 24px rgba(0,0,0,.5)}
+.osd{position:absolute;font:700 34px/1 "Consolas","Lucida Console",monospace;color:#f2f2f2;text-shadow:2px 2px 0 rgba(0,0,0,.6),0 0 8px rgba(255,255,255,.35);letter-spacing:2px}
+.osd.tl{left:64px;top:56px}
+.osd.tr{right:64px;bottom:56px}
+.blink{animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.flicker{animation:flicker 4s infinite}
+@keyframes flicker{0%,100%{opacity:1}47%{opacity:1}48%{opacity:.82}49%{opacity:1}72%{opacity:.93}73%{opacity:1}}
+.track{position:absolute;left:0;right:0;height:60px;top:-80px;background:linear-gradient(180deg,transparent,rgba(255,255,255,.07) 40%,rgba(255,255,255,.12) 50%,rgba(255,255,255,.07) 60%,transparent);animation:track 7s linear infinite;pointer-events:none}
+@keyframes track{0%{top:-80px}60%,100%{top:1100px}}
+.scan{position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.06) 0 2px,transparent 2px 4px);pointer-events:none}
+
+/* VHS tape-load entrance, replayed each time the source goes on air */
+.enter{animation:enter .9s steps(9) both}
+@keyframes enter{
+  0%{opacity:0;clip-path:inset(48% 0 48% 0);transform:translateX(-30px)}
+  20%{opacity:1;clip-path:inset(30% 0 55% 0);transform:translateX(24px)}
+  40%{clip-path:inset(10% 0 20% 0);transform:translateX(-12px) skewX(-6deg)}
+  60%{clip-path:inset(0 0 40% 0);transform:translateX(6px)}
+  80%{clip-path:inset(0);transform:translateX(-2px)}
+  100%{opacity:1;clip-path:inset(0);transform:none}}
+.glitch{animation:glitch .5s steps(5)}
+@keyframes glitch{0%{transform:translateX(8px);filter:hue-rotate(40deg)}40%{transform:translateX(-6px) skewX(5deg)}70%{transform:translateX(3px)}100%{transform:none;filter:none}}
+</style>
+<div class="stage" id="stage"></div>
+<script src="obs-ws.global.js"></script>
+<script>
+"use strict";
+const P = Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
+const stage = document.getElementById("stage");
+const fit = () => { stage.style.transform = `scale(${innerWidth / 1920},${innerHeight / 1080})`; };
+addEventListener("resize", fit); fit();
+const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+const SB = { a: "Team A Name", b: "Team B Name", sa: "Score A", sb: "Score B" };
+const texts = {};   // input name -> current text
+let render = () => {};
+
+/* shrink a single line until it fits its box */
+function shrink(node, maxW, start) {
+  let s = start; node.style.fontSize = s + "px";
+  while (node.scrollWidth > maxW && s > 20) { s -= 2; node.style.fontSize = s + "px"; }
+}
+function replay(node, cls) { node.classList.remove(cls); void node.offsetWidth; node.classList.add(cls); }
+
+if (P.kind === "scoreboard") {
+  const sb = el("div", "sb enter");
+  const team = side => { const t = el("div", `team ${side}`); const n = el("div", "tname outline"); t.append(n); return [t, n]; };
+  const score = () => { const s = el("div", "score"); const b = el("b"); s.append(b); return [s, b]; };
+  const [ta, na] = team("a"), [tb, nb] = team("b"), [sa, va] = score(), [sbx, vb] = score();
+  const cas = el("div", "cassette");
+  const win = el("div", "window"); win.append(el("div", "reel"), el("div", "tape"), el("div", "reel"));
+  const brand = el("div", "brand"); brand.innerHTML = "READY PLAYER <i>SITE</i>";
+  cas.append(win, brand);
+  sb.append(ta, sa, cas, sbx, tb);
+  stage.append(sb);
+  const last = {};
+  render = () => {
+    const set = (key, node, box, isScore) => {
+      const v = (texts[SB[key]] ?? (isScore ? "0" : key === "a" ? "TEAM A" : "TEAM B")).trim();
+      if (last[key] === v) return;
+      const had = key in last; last[key] = v; node.textContent = v;
+      if (isScore) { if (had) replay(box, "bump"); }
+      else { shrink(node, 440, 50); if (had) replay(box, "glitch"); }
+    };
+    set("a", na, ta); set("b", nb, tb); set("sa", va, sa, true); set("sb", vb, sbx, true);
+  };
+} else {
+  const y = Math.max(0.08, Math.min(0.92, +P.y || 0.5));
+  const wrap = el("div", "title"); wrap.style.top = (y * 100) + "%";
+  const big = el("div", "big flicker enter");
+  const main = el("span", "main outline"), r = el("span", "rgb r"), c = el("span", "rgb c");
+  big.append(r, c, main);
+  const ticket = el("div", "ticket outline enter", "READY PLAYER SITE");
+  ticket.style.animationDelay = ".25s";
+  wrap.append(big, ticket);
+  const play = el("div", "osd tl"); play.innerHTML = 'PLAY <span class="blink">&#9654;</span>';
+  const clock = el("div", "osd tr");
+  stage.append(el("div", "scan"), el("div", "track"), play, clock, wrap);
+  const t0 = Date.now();
+  const tick = () => { const s = Math.floor((Date.now() - t0) / 1000); clock.textContent = "SP " + [s / 3600, s / 60 % 60, s % 60].map(n => String(Math.floor(n)).padStart(2, "0")).join(":"); };
+  tick(); setInterval(tick, 1000);
+  let shown = null;
+  render = () => {
+    const v = (texts[P.src] ?? P.t ?? "").trim();
+    if (v === shown) return;
+    const had = shown !== null; shown = v;
+    for (const n of [main, r, c]) n.textContent = v;
+    shrink(big, 1640, 170);
+    if (had) replay(big, "glitch");
+  };
+  // replay the entrance whenever this source goes on air
+  addEventListener("obsSourceActiveChanged", e => { if (e.detail?.active) { replay(big, "enter"); replay(ticket, "enter"); } });
+}
+render();
+
+/* ---------- live words from OBS ---------- */
+const watched = P.kind === "scoreboard" ? Object.values(SB) : [P.src].filter(Boolean);
+async function connect() {
+  const obs = new OBSWebSocket();
+  obs.on("InputSettingsChanged", ({ inputName, inputSettings }) => {
+    if (watched.includes(inputName) && "text" in inputSettings) { texts[inputName] = inputSettings.text; render(); }
+  });
+  obs.on("ConnectionClosed", () => setTimeout(connect, 2000));
+  try {
+    await obs.connect(`ws://127.0.0.1:${P.port || 4455}`, P.pw || undefined);
+    for (const n of watched) {
+      try { texts[n] = (await obs.call("GetInputSettings", { inputName: n })).inputSettings.text ?? texts[n]; } catch {}
+    }
+    render();
+  } catch { /* ConnectionClosed retries */ }
+}
+if (window.OBSWebSocket) connect();
+</script>
+</html>

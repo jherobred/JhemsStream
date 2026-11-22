@@ -1,5 +1,19 @@
 [
   {
+    "file": "code-rain.webm",
+    "name": "Code Rain",
+    "cutPointMs": 840,
+    "durationMs": 1750,
+    "sound": "code-rain.ogg"
+  },
+  {
+    "file": "code-rain-site.webm",
+    "name": "Code Rain (Ready Player SITE)",
+    "cutPointMs": 840,
+    "durationMs": 1750,
+    "sound": "code-rain.ogg"
+  },
+  {
     "file": "panel-sweep.webm",
     "name": "Panel Sweep",
     "cutPointMs": 600,
