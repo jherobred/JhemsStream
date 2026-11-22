@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LiveDesk</title>
+<title>JhemsStream</title>
 <style>
 :root{
   --bg:#0e1014; --panel:#171a21; --panel2:#1f232c; --line:#2c313c; --text:#e8eaef; --muted:#9aa1ae;
@@ -126,7 +126,7 @@ dialog h3{margin:0 0 10px;font-size:18px}
 <!-- App -->
 <div id="app" class="hidden">
 <header>
-  <span class="brand">LiveDesk</span>
+  <span class="brand">JhemsStream</span>
   <span id="connPill" class="pill ok">OBS connected</span>
   <span class="onair">ON AIR <span id="liveTime"></span></span>
   <div class="stats" aria-live="off">
@@ -213,7 +213,7 @@ dialog h3{margin:0 0 10px;font-size:18px}
       <div class="field"><label for="fbServer">Server URL</label><input id="fbServer" value="rtmps://live-api-s.facebook.com:443/rtmp/" autocomplete="off"></div>
       <div class="field"><label for="fbKey">Stream key</label><input id="fbKey" type="password" autocomplete="off" placeholder="FB-1234…"></div>
       <div class="row"><button id="btnFbSend" style="background:var(--accent);border-color:var(--accent);color:#fff">Send to OBS</button><span id="fbStatus" class="small muted"></span></div>
-      <p class="small muted">The key goes straight into OBS. LiveDesk never saves it.</p>
+      <p class="small muted">The key goes straight into OBS. JhemsStream never saves it.</p>
     </div>
 
     <div data-panel="check" class="hidden">
@@ -658,7 +658,7 @@ async function chooseType(t) {
 }
 /* OBS only lists choices for an existing source, so make a throwaway one in a temp scene */
 async function listItems(kind, prop) {
-  const scene = "_LiveDesk temp", input = `_LiveDesk probe ${Date.now()}`;
+  const scene = "_JhemsStream temp", input = `_JhemsStream probe ${Date.now()}`;
   try {
     await obs.call("CreateScene", { sceneName: scene }).catch(() => {});
     await obs.call("CreateInput", { sceneName: scene, inputName: input, inputKind: kind, inputSettings: {} });
@@ -812,10 +812,10 @@ $("#btnCut").addEventListener("click", cut);
 
 /* ---------- onboarding ---------- */
 const HELP = [
-  ["Welcome to LiveDesk", `<p>LiveDesk is a remote control for <b>OBS</b>. OBS does the video and sends it to Facebook. You press big buttons here.</p><p>You can run LiveDesk on the streaming PC or on another laptop on the same Wi-Fi.</p>`],
-  ["1. Connect to OBS", `<ol class="steps"><li>Open OBS on the streaming PC.</li><li>Go to <b>Tools → WebSocket Server Settings</b>, tick <b>Enable WebSocket server</b>.</li><li>Click <b>Show Connect Info</b>, copy the password into LiveDesk.</li></ol>`],
+  ["Welcome to JhemsStream", `<p>JhemsStream is a remote control for <b>OBS</b>. OBS does the video and sends it to Facebook. You press big buttons here.</p><p>You can run JhemsStream on the streaming PC or on another laptop on the same Wi-Fi.</p>`],
+  ["1. Connect to OBS", `<ol class="steps"><li>Open OBS on the streaming PC.</li><li>Go to <b>Tools → WebSocket Server Settings</b>, tick <b>Enable WebSocket server</b>.</li><li>Click <b>Show Connect Info</b>, copy the password into JhemsStream.</li></ol>`],
   ["2. Screens", `<p>Each tile under <b>Screens</b> is one thing viewers can see: Starting Soon, the game, casters, a break screen.</p><p><b>Click a tile</b> to load it into <span style="color:var(--prev)"><b>PREVIEW</b></span>. Check it looks right. Press <b>TAKE</b> (or Space) to send it to <span style="color:var(--live)"><b>PROGRAM</b></span>, which is what viewers see.</p><p>Number keys <b>1–9</b> pick screens. <b>C</b> cuts instantly.</p>`],
-  ["3. Add what to show", `<p>Press <b>+ New screen</b>. Pick a monitor, a window, a game, a camera or capture card, a web overlay, or a file. LiveDesk sizes it to fit.</p><p>New here? Press <b>Add starter screens</b> once. You get Starting Soon, Main Game with a scoreboard, Casters, Break and Ending.</p>`],
+  ["3. Add what to show", `<p>Press <b>+ New screen</b>. Pick a monitor, a window, a game, a camera or capture card, a web overlay, or a file. JhemsStream sizes it to fit.</p><p>New here? Press <b>Add starter screens</b> once. You get Starting Soon, Main Game with a scoreboard, Casters, Break and Ending.</p>`],
   ["4. Transitions", `<p>Pick a transition next to TAKE. OBS starts with only Cut and Fade.</p><p>Want Swipe, Slide, Luma Wipe or a <b>Stinger</b> (animated video wipe)? In OBS, find the <b>Scene Transitions</b> box, press <b>+</b>, add it once. It shows up here right away.</p>`],
   ["5. Going live on Facebook", `<ol class="steps"><li>Facebook tab: paste the stream key from Live Producer → <b>Send to OBS</b>.</li><li>Work through the <b>Checklist</b> tab.</li><li>Put <b>Starting Soon</b> live, then press <b>GO LIVE</b>.</li><li>When Facebook shows the preview, press <b>Go live in Facebook</b> too.</li></ol><p>Watch the top bar: <b>Dropped</b> should stay under 1%. Red numbers mean trouble with internet or the PC.</p>`],
   ["6. Volunteers", `<p>Tick <b>Volunteer mode</b> before handing the laptop over. It hides Go Live, End Stream, Record, the stream key and delete buttons. Volunteers can still switch screens, mute mics and update scores.</p><p>Reopen this guide anytime with <b>Help</b>.</p>`],
