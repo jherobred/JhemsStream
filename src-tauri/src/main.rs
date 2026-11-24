@@ -116,7 +116,7 @@ fn random_password() -> String {
 }
 
 /// Adds JhemsStream's transitions to the active scene collection. OBS must be closed.
-fn add_transitions(stinger_dir: Option<&Path>) -> Result<(), String> {
+fn add_transitions(stinger_dir: Option<&Path>) -> Result<usize, String> {
     let base = appdata_obs();
     let mut file = "Untitled".to_string();
     for ini in ["user.ini", "global.ini"] {
@@ -129,13 +129,13 @@ fn add_transitions(stinger_dir: Option<&Path>) -> Result<(), String> {
     }
     let path = base.join("basic").join("scenes").join(format!("{file}.json"));
     if !path.exists() {
-        return Ok(()); // first run: OBS creates it
+        return Ok(0); // first run: OBS creates it
     }
     add_transitions_to(&path, stinger_dir)
 }
 
 /// Idempotent by name: only transitions the collection doesn't already have are added, after a backup.
-fn add_transitions_to(path: &Path, stinger_dir: Option<&Path>) -> Result<(), String> {
+fn add_transitions_to(path: &Path, stinger_dir: Option<&Path>) -> Result<usize, String> {
     let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let mut doc: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
     let list = doc["transitions"].as_array().cloned().unwrap_or_default();
@@ -176,12 +176,14 @@ fn add_transitions_to(path: &Path, stinger_dir: Option<&Path>) -> Result<(), Str
             out.push(json!({"name": name, "id": id, "settings": settings}));
         }
     }
-    if out.len() == list.len() {
-        return Ok(());
+    let added = out.len() - list.len();
+    if added == 0 {
+        return Ok(0);
     }
     std::fs::copy(path, path.with_extension("json.jhemsstream-backup")).map_err(|e| e.to_string())?;
     doc["transitions"] = Value::Array(out);
-    std::fs::write(path, serde_json::to_string_pretty(&doc).unwrap()).map_err(|e| e.to_string())
+    std::fs::write(path, serde_json::to_string_pretty(&doc).unwrap()).map_err(|e| e.to_string())?;
+    Ok(added)
 }
 
 /// Stinger videos ship as app resources; OBS needs a stable path that survives updates,
@@ -254,9 +256,25 @@ async fn obs_setup(app: tauri::AppHandle) -> Result<ObsInfo, String> {
     }
     std::fs::create_dir_all(p.parent().unwrap()).map_err(|e| e.to_string())?;
     std::fs::write(&p, serde_json::to_string_pretty(&cfg).unwrap()).map_err(|e| e.to_string())?;
-    let _ = add_transitions(stingers_ready(&app).ok().as_deref());
+    let added = add_transitions(stingers_ready(&app).ok().as_deref());
     obs_launch().await?;
+    added.map_err(|e| format!("OBS is set up, but its transitions couldn't be added: {e}"))?;
     Ok(obs_info().await)
+}
+
+/// Adds JhemsStream's OBS transitions (wipes, slides and every built-in stinger, SITE ones included) to the
+/// scene collection OBS has open. OBS only reads transitions at load, so it is closed, edited and reopened.
+/// The caller makes sure OBS isn't streaming or recording.
+#[tauri::command]
+async fn obs_add_transitions(app: tauri::AppHandle) -> Result<usize, String> {
+    let dir = stingers_ready(&app)?;
+    let was_running = obs_running();
+    close_obs()?;
+    let added = add_transitions(Some(&dir));
+    if was_running {
+        obs_launch().await?;
+    }
+    added
 }
 
 #[tauri::command]
@@ -496,10 +514,25 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // the window starts hidden so it never flashes an unpainted (white/black) frame; the page shows it
+        // after its first paint, and this shows it anyway if the page never does
+        .setup(|app| {
+            use tauri::Manager;
+            if let Some(w) = app.get_webview_window("main") {
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_secs(4));
+                    if !w.is_visible().unwrap_or(true) {
+                        let _ = w.show();
+                        let _ = w.set_focus();
+                    }
+                });
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             obs_info, obs_launch, obs_setup, obs_install,
             list_audio, read_audio, app_audio_list, app_audio_set, media_key, gpu_names,
-            stinger_dir, stinger_manifest, safe_record_dir
+            stinger_dir, stinger_manifest, safe_record_dir, obs_add_transitions
         ])
         .run(tauri::generate_context!())
         .expect("error while running JhemsStream");

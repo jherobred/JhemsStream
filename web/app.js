@@ -49,10 +49,13 @@ function log(msg, bad) {
   const t = new Date().toLocaleTimeString();
   $("#log").prepend(h("div", { class: bad ? "bad" : "" }, `${t}  ${msg}`));
 }
-function toast(msg, kind = "ok") {
+function toast(msg, kind = "ok", action) {
   const el = h("div", { class: `toast ${kind}`, role: kind === "bad" ? "alert" : "status" }, msg);
+  const bye = () => { el.classList.add("out"); setTimeout(() => el.remove(), 300); };
+  // a toast with a button stays longer, so there is time to press it
+  if (action) el.append(h("button", { type: "button", class: "btn small toast-act", onclick: () => { bye(); action.fn(); } }, action.label));
   $("#toasts").append(el);
-  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 300); }, kind === "bad" ? 6000 : 3200);
+  setTimeout(bye, action ? 12000 : kind === "bad" ? 6000 : 3200);
 }
 async function call(type, data) {
   try { return await obs.call(type, data); }
@@ -760,6 +763,8 @@ if (TAURI?.window) {
     win.close();
   });
   win.onResized?.(() => syncMax()); syncMax();
+  // tauri.conf.json starts the window hidden; show it once the page has painted (main.rs has a fallback)
+  requestAnimationFrame(() => requestAnimationFrame(() => { win.show().then(() => win.setFocus()).catch(() => {}); }));
 }
 window.addEventListener("load", () => {
   if (window.Setup?.start) Setup.start();

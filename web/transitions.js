@@ -13,6 +13,8 @@
   let builtins = [];
   let selected = store.get("stingerSel", null);
   let running = false;
+  let muted = store.get("transMute", false);          // silences every stinger sound, for every stinger
+  const soundOf = st => muted ? "none" : st.audio;
 
   const all = () => [...builtins.map(b => ({ ...b, ...(overrides[b.id] || {}), builtin: true })), ...stingers];
   const byId = id => all().find(s => s.id === id);
@@ -40,7 +42,7 @@
     const settings = { local_file: s.file, is_local_file: true, looping: false, restart_on_activate: false, close_when_inactive: false, hw_decode: true };
     if (!(await hasInput(name))) await call("CreateInput", { sceneName: S.program, inputName: name, inputKind: "ffmpeg_source", inputSettings: settings, sceneItemEnabled: false });
     else await call("SetInputSettings", { inputName: name, inputSettings: settings });
-    await call("SetInputMute", { inputName: name, inputMuted: s.audio !== "own" });
+    await call("SetInputMute", { inputName: name, inputMuted: soundOf(s) !== "own" });
     return name;
   }
   async function ensureAudioInput(path, volume) {
@@ -100,7 +102,7 @@
   /* load a stinger's YouTube sound ahead of time so it starts the instant the transition does */
   let ytCued = null;
   async function precue(s) {
-    if (s?.audio !== "separate" || s.sep?.kind !== "youtube") return;
+    if (soundOf(s || {}) !== "separate" || s.sep?.kind !== "youtube") return;
     const p = parse(s.sep.url); if (p?.kind !== "yt") return;
     const start = +s.sep.startSec || 0, key = `${p.vid}@${start}`;
     if (ytCued === key) return;
@@ -110,7 +112,7 @@
   /* start the stinger's separate sound; returns a stop function */
   async function startSound(s) {
     const sep = s.sep || {};
-    if (s.audio !== "separate") return () => {};
+    if (soundOf(s) !== "separate") return () => {};
     if (sep.kind === "youtube") {
       const p = parse(sep.url);
       if (!p || p.kind !== "yt") { toast("The transition's YouTube link isn't a video link.", "warn"); return () => {}; }
@@ -143,7 +145,7 @@
       const scenes = previewOnly ? [target] : [from, target];
       const vids = {}, aids = {};
       for (const sc of scenes) vids[sc] = await ensureItem(sc, vin, true);
-      const fileSound = s.audio === "separate" && s.sep?.kind === "file" && s.sep.path;
+      const fileSound = soundOf(s) === "separate" && s.sep?.kind === "file" && s.sep.path;
       if (fileSound) { await ensureAudioInput(s.sep.path, s.sep.volume); for (const sc of scenes) aids[sc] = await ensureItem(sc, AUDIO_IN, false); }
       const cutT = previewOnly ? null : await cutName();
       const prevTrans = previewOnly ? null : (await call("GetCurrentSceneTransition")).transitionName;
@@ -258,8 +260,18 @@
   async function listView(body, foot) {
     body.textContent = ""; foot.textContent = "";
     const obsBox = h("div", { class: "trans-list" }, h("p", { class: "muted small" }, "Loading OBS transitions"));
-    body.append(h("h4", { class: "trans-sub" }, "OBS transitions"), obsBox,
-      h("p", { class: "muted small" }, "More OBS styles, like Fade to Black and extra wipes, are added in Settings, OBS connection, Set up OBS again (OBS restarts)."));
+    const soundCb = h("input", { type: "checkbox", role: "switch", class: "switch", "aria-label": "Transition sounds" }); soundCb.checked = !muted;
+    soundCb.addEventListener("change", () => { setMuted(!soundCb.checked); listView(body, foot); });
+    const missBox = h("div");
+    body.append(h("label", { class: "row trans-mute" }, soundCb, h("span", { class: "grow" }, h("b", {}, "Transition sounds"),
+      h("span", { class: "muted small" }, muted ? " Muted for every stinger." : " Each stinger plays its own sound setting.")), ""), missBox,
+      h("h4", { class: "trans-sub" }, "OBS transitions"), obsBox);
+    checkObs().then(m => {
+      if (!m.length) return;
+      missBox.append(h("div", { class: "tip trans-missing" },
+        h("p", {}, h("b", {}, `OBS is missing ${m.length} JhemsStream transition${m.length > 1 ? "s" : ""}`), `: ${m.slice(0, 4).join(", ")}${m.length > 4 ? ", …" : ""}. They work here already; adding them lets OBS's own Transition button and hotkeys use them too.`),
+        h("button", { type: "button", class: "btn small primary", onclick: addToObs }, "Add them to OBS (restarts OBS)")));
+    });
     call("GetSceneTransitionList").then(r => {
       obsBox.textContent = "";
       for (const t of r.transitions) obsBox.append(h("div", { class: "trans-row" },
@@ -404,10 +416,50 @@
   }
 
   $("#btnTransManage")?.addEventListener("click", open);
-  JS.onReady(async () => { decorateAll(true); await loadBuiltins(); if (selected) precue(byId(selected)); });
+
+  /* ---------- transition sound on/off (all stingers at once) ---------- */
+  function setMuted(m) {
+    muted = !!m; store.set("transMute", muted);
+    const b = $("#btnTransMute");
+    if (b) { b.setAttribute("aria-pressed", String(muted)); b.querySelector(".lbl").textContent = muted ? "Sound off" : "Sound on"; b.title = muted ? "Transition sounds are muted. Click to turn them on." : "Transition sounds play. Click to mute them."; b.replaceChild(JS.icon(muted ? "mute" : "vol"), b.querySelector(".ic")); }
+    // a stinger whose own audio is playing right now goes quiet too
+    if (S.connected) for (const st of all()) obs.call("SetInputMute", { inputName: inputOf(st), inputMuted: soundOf(st) !== "own" }).catch(() => {});
+    if (muted) { try { ytP && ytP.then(p => p.pauseVideo()).catch(() => {}); } catch {} }
+  }
+  $("#btnTransMute")?.addEventListener("click", () => setMuted(!muted));
+  setMuted(muted);
+
+  /* ---------- JhemsStream transitions that OBS doesn't have yet ----------
+     OBS only loads transitions when it opens a scene collection, so they can't be added live. The desktop app adds
+     them to the collection file with OBS closed (it reopens OBS). These are the names main.rs writes. */
+  const NATIVE = ["Swipe", "Swipe Up", "Slide", "Slide Right", "Fade to Black", "Luma Wipe", "Luma Wipe Iris", "Luma Wipe Diagonal", "Luma Wipe Barn Door"];
+  let missing = [];
+  async function checkObs() {
+    if (!T || !S.connected) return [];
+    try {
+      const have = new Set((await call("GetSceneTransitionList")).transitions.map(t => t.transitionName));
+      missing = [...NATIVE, ...builtins.map(b => `Stinger ${b.name}`)].filter(n => !have.has(n));
+    } catch { missing = []; }
+    return missing;
+  }
+  async function addToObs() {
+    if (S.streaming || S.recording) return toast("Stop streaming and recording first. OBS has to restart to load new transitions.", "warn");
+    if (!confirm(`Add ${missing.length} JhemsStream transitions to OBS (including the SITE Code Rain stingers)? OBS closes and reopens, and JhemsStream reconnects by itself.`)) return;
+    try {
+      const n = await T.core.invoke("obs_add_transitions");
+      toast(n ? `Added ${n} transitions to OBS. It is reopening.` : "OBS already has every JhemsStream transition.", "ok");
+      dlg?.close();
+    } catch (e) { toast("Couldn't add the transitions: " + e, "bad"); }
+  }
+  let nagged = false;
+  JS.onReady(async () => {
+    decorateAll(true); await loadBuiltins(); if (selected) precue(byId(selected));
+    if (!nagged && (await checkObs()).length) { nagged = true; toast(`OBS is missing ${missing.length} JhemsStream transitions (SITE stingers included).`, "warn", { label: "Add to OBS", fn: addToObs }); }
+  });
 
   window.Transitions = {
     isCustom: () => !!(selected && byId(selected) && S.connected),
+    get muted() { return muted; }, setMuted, checkObs, addToObs,
     toScene, run, open, get list() { return all(); }, get selected() { return selected; },
     soundPlayer: () => ytP, // the YouTube player used for transition sounds, if one was made
   };
