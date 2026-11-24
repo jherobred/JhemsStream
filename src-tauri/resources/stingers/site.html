@@ -14,7 +14,7 @@
 html,body{margin:0;background:transparent;overflow:hidden}
 body.paused *,body.paused *::before,body.paused *::after{animation-play-state:paused!important}
 .stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;font-family:"Bahnschrift","Segoe UI",sans-serif;color:#fff;overflow:hidden}
-.bg{position:absolute;inset:-2%;background-size:cover;background-position:center;animation:drift 40s ease-in-out infinite alternate}
+.bg{position:absolute;inset:0;background-size:cover;background-position:center;animation:drift 40s ease-in-out infinite alternate}
 @keyframes drift{from{transform:scale(1) translate(0,0)}to{transform:scale(1.06) translate(-1%,-1%)}}
 canvas.fx{position:absolute;inset:0;pointer-events:none}
 .sweep{position:absolute;inset:0;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.08) 48%,rgba(255,230,180,.16) 50%,rgba(255,255,255,.08) 52%,transparent 60%);background-size:300% 100%;animation:sweep 7s ease-in-out infinite;mix-blend-mode:screen}
@@ -57,7 +57,7 @@ canvas.fx{position:absolute;inset:0;pointer-events:none}
 
 /* win */
 .win .bg{animation:push 26s ease-out both}
-@keyframes push{from{transform:scale(1.12)}to{transform:scale(1.0)}}
+@keyframes push{from{transform:scale(1)}to{transform:scale(1.1)}}
 .shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(6,1,14,.92) 0%,rgba(6,1,14,.75) 32%,rgba(6,1,14,0) 58%)}
 .wtxt{position:absolute;left:110px;top:0;bottom:0;width:860px;display:flex;flex-direction:column;justify-content:center;gap:18px}
 .wtxt .badge{align-self:flex-start}
@@ -170,12 +170,13 @@ if (kind === "bumper") {
 } else if (kind === "standings") {
   stage.append(Object.assign(el("div", "bg"), { style: `background-image:url(bg-site${P.bg === "2" ? 2 : 1}.jpg)` }));
   fx("embers"); stage.append(el("div", "sweep"));
-  const top = el("div", "center"); top.style.cssText = "top:40px;bottom:auto;gap:12px";
+  // BG2 has its own READY PLAYER SITE lettering across the top, so the heading starts below it there
+  const bg2 = P.bg === "2", top = el("div", "center"); top.style.cssText = `top:${bg2 ? 168 : 40}px;bottom:auto;gap:12px`;
   if (P.game) top.append(badge(P.game));
   const t = title(P.title || "FINAL STANDINGS", "slam"); t.style.fontSize = "84px"; top.append(t); stage.append(top);
   const b = el("div", "board"); stage.append(b);
   const rows = [1, 2, 3, 4, 5].map(i => [P["l" + i], P["t" + i]]).filter(([l]) => l);
-  b.style.top = rows.length > 3 ? "250px" : "320px";
+  b.style.top = (rows.length > 3 ? 250 : 320) + (bg2 ? 110 : 0) + "px";
   // revealed from the last place up, so the champion lands last
   rows.forEach(([l, t2], i) => { const r = el("div", `row${i === 0 ? " first" : ""}`); r.append(el("div", "p", l), el("div", "t", t2 || "TBA")); r.style.animationDelay = (0.9 + (rows.length - 1 - i) * 0.7) + "s"; b.append(r); });
 } else if (kind === "plates") {
@@ -183,7 +184,8 @@ if (kind === "bumper") {
 }
 
 /* OBS: pause when hidden, replay the entrance each time it goes on air */
-function replayAll() { for (const n of stage.querySelectorAll("*")) { const a = n.style.animation; n.style.animation = "none"; void n.offsetWidth; n.style.animation = a; } }
+// restart every CSS animation from the top, keeping each element's own delay (the staggered reveal)
+function replayAll() { for (const an of document.getAnimations()) { an.cancel(); an.play(); } }
 addEventListener("obsSourceVisibleChanged", e => { running = !!e.detail?.visible; document.body.classList.toggle("paused", !running); });
 addEventListener("obsSourceActiveChanged", e => { if (e.detail?.active) replayAll(); });
 </script>

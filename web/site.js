@@ -71,10 +71,20 @@
   const inputNames = async () => new Set((await call("GetInputList")).inputs.map(i => i.inputName));
   const ABGR = hex => (0xff000000 | parseInt(hex.slice(5, 7) + hex.slice(3, 5) + hex.slice(1, 3), 16)) >>> 0;
 
-  /* one browser source per screen, unloaded while hidden so twenty screens don't sit in memory */
+  /* one browser source per screen, unloaded while hidden so twenty screens don't sit in memory. Under it, an OBS image
+     of the same background (shared, always loaded), so a straight Cut shows the throne or SITE art from the first
+     frame while the page loads, never black. */
   async function addScreen(scene, q, rect) {
     const { w, h: H } = S.canvas, name = screenName(scene);
     const r = rect || { x: 0, y: 0, w, h: H };
+    const bgFile = q.kind === "win" ? q.img : q.kind === "plates" ? null : `bg-site${q.bg == 2 ? 2 : 1}.jpg`;
+    if (bgFile) {
+      const img = `SITE Image · ${bgFile}`;
+      const id = (await inputNames()).has(img) ? (await call("CreateSceneItem", { sceneName: scene, sourceName: img })).sceneItemId
+        : (await call("CreateInput", { sceneName: scene, inputName: img, inputKind: "image_source", inputSettings: { file: `${await assetDir()}\\${bgFile}`, unload: false } })).sceneItemId;
+      await call("SetSceneItemTransform", { sceneName: scene, sceneItemId: id, sceneItemTransform: { boundsType: "OBS_BOUNDS_STRETCH", boundsWidth: w, boundsHeight: H, alignment: 5, positionX: 0, positionY: 0 } });
+      await call("SetSceneItemLocked", { sceneName: scene, sceneItemId: id, sceneItemLocked: true });
+    }
     const { sceneItemId } = await call("CreateInput", { sceneName: scene, inputName: name, inputKind: "browser_source",
       inputSettings: { url: await pageUrl(q), width: 1920, height: 1080, fps: 60, shutdown: true, restart_when_active: false, reroute_audio: false } });
     await call("SetSceneItemTransform", { sceneName: scene, sceneItemId, sceneItemTransform: { boundsType: "OBS_BOUNDS_STRETCH", boundsWidth: r.w, boundsHeight: r.h, alignment: 5, positionX: r.x, positionY: r.y } });
@@ -148,9 +158,10 @@
     } catch (e) { note.remove(); toast("SITE setup stopped: " + (e.message || e) + ". Press it again to finish; finished screens are kept.", "bad"); }
     finally { busy = false; }
   }
+  /* step 1 of the button: OBS itself gets the SITE transitions (addToObs asks first, since OBS restarts) */
   async function offerTransitions() {
     const m = await window.Transitions?.checkObs?.();
-    if (m?.length) toast(`OBS doesn't have the SITE transitions yet (${m.length} missing).`, "warn", { label: "Add to OBS", fn: () => Transitions.addToObs() });
+    if (m?.length) await Transitions.addToObs();
   }
 
   /* ---------- scoreboard: load a match's teams ---------- */

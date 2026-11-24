@@ -102,9 +102,11 @@
       if (kind === "down" || kind === "mute") {
         const on = live().filter(a => !a.muted);
         if (!on.length) return toast(targets() ? "The picked sources are already muted." : "Everything is already muted.", "warn");
-        mixMem = { ...(mixMem || {}), ...Object.fromEntries(live().map(a => [a.name, { db: a.db, muted: a.muted }])) }; store.set("mixMem", mixMem);
+        mixMem = { ...Object.fromEntries(live().map(a => [a.name, { db: a.db, muted: a.muted }])), ...(mixMem || {}) }; store.set("mixMem", mixMem);
         on.forEach(a => { a.fading = true; });
-        const done = kind === "mute" || await ramp(on, a => a.db, () => -60, fadeSec() * 1000);
+        // start from where each source really is (a stopped fade leaves them part way down)
+        const start = Object.fromEntries(await Promise.all(on.map(async a => [a.name, await dbNow(a)])));
+        const done = kind === "mute" || await ramp(on, a => start[a.name], () => -60, fadeSec() * 1000);
         if (done) {
           await Promise.all(on.map(a => obs.call("SetInputMute", { inputName: a.name, inputMuted: true })));
           await Promise.all(on.map(a => obs.call("SetInputVolume", { inputName: a.name, inputVolumeDb: mixMem[a.name].db })));

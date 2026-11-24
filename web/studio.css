@@ -14,9 +14,10 @@
 .ctx-head{padding:4px var(--s2) 2px 22px;color:var(--muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* ---------- dock titles carry quick controls ---------- */
-.dock-title{flex-wrap:nowrap;overflow:hidden}
+/* a narrow dock wraps its title buttons onto a second row instead of cutting them off */
+.dock-title{flex-wrap:wrap;row-gap:2px;padding-block:2px}
 .dock-title h2{flex:0 1 auto;white-space:nowrap}
-.roles,.mixquick{display:flex;gap:2px;margin-left:auto;min-width:0;overflow:hidden}
+.roles,.mixquick{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:2px;margin-left:auto;min-width:0}
 .role-btn,.qbtn{display:inline-flex;align-items:center;gap:4px;min-height:22px;padding:0 6px;border:1px solid var(--border);border-radius:var(--r-tag);background:var(--raised);font-size:11px;font-weight:600;white-space:nowrap;color:var(--text);transition:background-color var(--dur-micro)}
 .role-btn:hover:not(:disabled),.qbtn:hover:not(:disabled){background:var(--pressed)}
 .role-btn.unset{background:transparent;border-style:dashed;color:var(--muted);font-weight:400}
