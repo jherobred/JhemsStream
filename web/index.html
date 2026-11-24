@@ -82,7 +82,14 @@
         <button id="btnNew" class="btn small">Add scene</button>
         <button id="btnStarter" class="btn small director">Starter scenes</button>
         <button id="btnSiteLook" class="btn small director" title="Ready Player SITE graphics on the starter screens and scoreboard">SITE look</button>
+        <button id="btnSiteEvent" class="btn small primary director" title="Every Ready Player SITE finals screen, in show order, plus SOURCE scenes for the game feeds and cameras">SITE event setup</button>
       </div>
+    </section>
+
+    <section data-dock="sources" class="dock dock-sources" aria-labelledby="hSources">
+      <div class="dock-title"><h2 id="hSources">Sources</h2><span class="muted small src-of" id="srcOf"></span></div>
+      <div class="dock-body"><ul id="sources" class="srclist" aria-label="Sources in this scene"></ul></div>
+      <div class="dock-foot" id="srcFoot"></div>
     </section>
 
     <section data-dock="mixer" class="dock dock-mixer" aria-labelledby="hMixer">
@@ -174,6 +181,8 @@
       <div class="dock-body">
         <div class="panel" data-panel="score">
           <div id="scoreBox"></div>
+          <h3 class="subhead">SITE matches</h3>
+          <div id="siteMatches" class="row"></div>
           <h3 class="subhead">Border scoreboard</h3>
           <div id="boardBox"></div>
           <h3 class="subhead">Other text on screen</h3>
@@ -269,6 +278,7 @@
 <script src="editor.js"></script>
 <script src="borders.js"></script>
 <script src="studio.js"></script>
+<script src="site.js"></script>
 <script src="setup.js"></script>
 </body>
 </html>

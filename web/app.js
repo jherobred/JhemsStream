@@ -33,6 +33,9 @@ const ICONS = {
   shield: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/>', check: '<path d="m5 12 5 5L20 7"/>',
   folder: '<path d="M3 6h6l2 2h10v11H3z"/>',
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>', eyeoff: '<path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>', unlock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/>',
+  gear2: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   live: '<path d="M4 7h11v10H4zM15 10l5-3v10l-5-3"/>', obs: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="7.5" r="2.5"/><circle cx="8" cy="14.5" r="2.5"/><circle cx="16" cy="14.5" r="2.5"/>',
   chat: '<path d="M4 5h16v11H9l-5 4z"/>', gauge: '<path d="M4 18a9 9 0 1 1 16 0M12 14l4-5"/>', note: '<path d="M9 18V5l11-2v13M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zM20 16a3 3 0 1 1-3-3 3 3 0 0 1 3 3z"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7M12 17h.01"/>',
@@ -133,7 +136,7 @@ function renderScenes() {
         h("div", { class: "acts" },
           h("button", { class: "btn small", onclick: () => window.Editor?.openEdit(name) }, icon("edit"), "Edit"),
           h("button", { class: "btn small director", onclick: () => renameScene(name) }, "Rename"),
-          h("button", { class: "btn small icon director", "aria-label": `Delete ${name}`, onclick: () => deleteScene(name) }, icon("trash"))));
+          h("button", { class: "btn small icon director del", "aria-label": `Delete ${name}: press 3 times`, title: "Delete: press 3 times", onclick: e => armDelete(e.currentTarget, name) }, icon("trash"))));
       tileEls.set(name, tile); box.append(tile);
     });
   }
@@ -190,6 +193,18 @@ async function cut() {
 async function renameScene(name) {
   const n = prompt(`Rename "${name}" to:`, name);
   if (n && n.trim() && n !== name) await call("SetSceneName", { sceneName: name, newSceneName: n.trim() });
+}
+/* deleting takes three presses of the trash button; each press turns it a stronger red, and it calms down after 3 s */
+function armDelete(btn, name) {
+  if (name === S.program) return toast("That screen is on air. Switch to another screen first.", "warn");
+  if (!btn) return;
+  clearTimeout(btn._arm);
+  const n = (+btn.dataset.arm || 0) + 1;
+  const reset = () => { btn.dataset.arm = 0; btn.classList.remove("arm1", "arm2"); btn.title = "Delete: press 3 times"; btn.setAttribute("aria-label", `Delete ${name}: press 3 times`); };
+  if (n >= 3) { reset(); log(`Deleted the screen ${name}`); return call("RemoveScene", { sceneName: name }); }
+  btn.dataset.arm = n; btn.classList.toggle("arm1", n === 1); btn.classList.toggle("arm2", n === 2);
+  const left = 3 - n; btn.title = `Press ${left} more time${left > 1 ? "s" : ""} to delete ${name}`; btn.setAttribute("aria-label", btn.title);
+  btn._arm = setTimeout(reset, 3000);
 }
 async function deleteScene(name) {
   if (name === S.program) return toast("That screen is on air. Switch to another screen first.", "warn");
@@ -379,8 +394,10 @@ const MIC_KINDS = ["wasapi_input_capture", "coreaudio_input_capture", "pulse_inp
 async function refreshInputs() {
   const list = (await call("GetInputList")).inputs;
   // window/game captures report the audio cap even when "capture audio" is off; OBS's own mixer hides those
-  const hasAudio = async i => !/^(window|game)_capture$/.test(i.unversionedInputKind)
-    || !!(await obs.call("GetInputSettings", { inputName: i.inputName }).catch(() => null))?.inputSettings?.capture_audio;
+  // browser sources only reach OBS's mixer with "Control audio via OBS" (reroute_audio); like OBS, hide them otherwise
+  const flag = async (i, k) => !!(await obs.call("GetInputSettings", { inputName: i.inputName }).catch(() => null))?.inputSettings?.[k];
+  const hasAudio = async i => /^(window|game)_capture$/.test(i.unversionedInputKind) ? flag(i, "capture_audio")
+    : i.unversionedInputKind === "browser_source" ? flag(i, "reroute_audio") : true;
   const audio = [];
   for (const i of list.filter(i => i.inputKindCaps & 2)) if (await hasAudio(i)) audio.push(i);
   S.audio = await Promise.all(audio.map(async i => {
@@ -522,7 +539,7 @@ function renderSceneLevels() {
     num.addEventListener("input", () => { if (num.value === "") return; r.value = num.value / 100; apply(num.value / 100); });
     box.append(h("div", { class: "lvlrow" }, h("span", {}, n), r, h("span", { class: "pct" }, num, "%")));
   }
-  if (S.program) Music.setScene(sceneLevel(S.program), 0.3);
+  if (S.program && Math.abs(Music.st.sceneLevel - sceneLevel(S.program)) > 0.001) Music.setScene(sceneLevel(S.program));
 }
 
 /* ---------- scoreboard + other text ---------- */
@@ -726,7 +743,7 @@ $("#btnCut").addEventListener("click", cut);
 /* ---------- guided tour: spotlights each part of the console in turn ---------- */
 const HELP = [
   [null, "Welcome to JhemsStream", `<p>OBS makes the video and sends it to Facebook. JhemsStream puts the crew's controls in one window.</p><p>This tour points at each part. Use the arrow keys or the buttons. Esc closes it, and <b>Help</b> in the top bar reopens it.</p>`],
-  [".dock-scenes", "1. Pick a scene", `<p>Each row is something viewers can see. Click one to load it into <b>Preview</b>. Keys <b>1</b> to <b>9</b> do the same.</p><p><b>Main</b>, <b>Win</b>, <b>Next A</b> and <b>Next B</b> at the top jump to the scene you set for each (right-click to set). Right-click a scene for more. <b>Add scene</b> has the SITE border templates.</p>`],
+  [".dock-scenes", "1. Pick a scene", `<p>Each row is something viewers can see. Click one to load it into <b>Preview</b>. Keys <b>1</b> to <b>9</b> do the same.</p><p><b>Main</b>, <b>Win</b>, <b>Next A</b> and <b>Next B</b> at the top jump to the scene you set for each (right-click to set). Right-click a scene for more. <b>Add scene</b> has the SITE border templates, and <b>SITE event setup</b> builds every finals screen in show order.</p>`],
   [".mon-preview", "2. Check Preview", `<p>Green means <b>next</b>. Nothing here is on stream yet, so you can fix it safely.</p><p>Click a source on it to select it, drag to move, drag a red handle to resize, Alt and a handle to crop. Right-click for layers, fit and lock. <b>Multiview</b> (M) shows every scene at once.</p>`],
   [".takecol", "3. Transition", `<p>Press <b>Transition</b> or <b>Space</b> to send Preview to air. <b>C</b> cuts instantly. Drag the T-bar to do it by hand.</p><p>Pick the effect here. The <b>Code Rain</b> stingers are the SITE ones.</p>`],
   [".mon-program", "4. Program is live", `<p>Red means <b>on stream</b>. This is exactly what Facebook viewers see.</p>`],
@@ -782,13 +799,24 @@ $("#dlgHelp").addEventListener("close", () => store.set("helpSeen", true));
 $$("[data-help]").forEach(b => b.addEventListener("click", openHelp));
 
 /* ---------- shared API for editor.js and setup.js ---------- */
+/* OBS asks "outputs still active, exit?" and won't close until someone answers; stopping is asynchronous, so wait
+   until every output reports stopped before JhemsStream closes OBS to edit its files */
+async function stopOutputsForRestart() {
+  await obs.call("StopReplayBuffer").catch(() => {});
+  await obs.call("StopVirtualCam").catch(() => {});
+  for (let i = 0; i < 60; i++) {
+    const outs = (await obs.call("GetOutputList").catch(() => ({ outputs: [] }))).outputs;
+    if (!outs.some(o => o.outputActive)) return;
+    await new Promise(r => setTimeout(r, 250));
+  }
+}
 /* settings the whole crew shares: stored in OBS's profile through obs-websocket, so every laptop sees the same */
 const shared = {
   async get(k, d) { try { const v = (await obs.call("GetPersistentData", { realm: "OBS_WEBSOCKET_DATA_REALM_PROFILE", slotName: "jhemsstream." + k })).slotValue; return v ?? d; } catch { return d; } },
   set(k, v) { return obs.call("SetPersistentData", { realm: "OBS_WEBSOCKET_DATA_REALM_PROFILE", slotName: "jhemsstream." + k, slotValue: v }).catch(() => {}); },
 };
 window.JS = { obs, S, call, h, $, $$, store, log, toast, icon, pickScene, refreshScenes, refreshInputs, connect, onReady: f => readyFns.push(f), openExt, runTransitionProgress: ms => runBunting(ms),
-  quiet, restoreTransition, timed, take, cut, renameScene, deleteScene, setStudioMode, fadeMute, toggleMonitor, cleanMic, ensureFilter, renderMixer, renderScenes, tileEls, shared, fmtDb, MIC_KINDS, selectTab };
+  quiet, restoreTransition, timed, armDelete, stopOutputsForRestart, take, cut, renameScene, deleteScene, setStudioMode, fadeMute, toggleMonitor, cleanMic, ensureFilter, renderMixer, renderScenes, tileEls, shared, fmtDb, MIC_KINDS, selectTab };
 
 /* ---------- window buttons in our own title bar (desktop app has no Windows title bar) ---------- */
 if (TAURI?.window) {

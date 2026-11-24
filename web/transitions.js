@@ -448,8 +448,7 @@
     if (!confirm(`Add ${missing.length} JhemsStream transitions to OBS (including the SITE Code Rain stingers)? OBS closes and reopens, and JhemsStream reconnects by itself. The replay buffer and virtual camera are stopped first.`)) return;
     try {
       // OBS asks "outputs still active, exit?" for these and won't close until someone answers
-      await obs.call("StopReplayBuffer").catch(() => {});
-      await obs.call("StopVirtualCam").catch(() => {});
+      await JS.stopOutputsForRestart();
       const n = await (window.Setup?.hold ? Setup.hold(() => T.core.invoke("obs_add_transitions")) : T.core.invoke("obs_add_transitions"));
       toast(n ? `Added ${n} transitions to OBS. It is reopening.` : "OBS already has every JhemsStream transition.", "ok");
       dlg?.close();
@@ -463,7 +462,7 @@
 
   window.Transitions = {
     isCustom: () => !!(selected && byId(selected) && S.connected),
-    get muted() { return muted; }, setMuted, checkObs, addToObs,
+    get muted() { return muted; }, setMuted, checkObs, addToObs, use: useStinger,
     toScene, run, open, get list() { return all(); }, get selected() { return selected; },
     soundPlayer: () => ytP, // the YouTube player used for transition sounds, if one was made
   };

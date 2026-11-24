@@ -97,3 +97,25 @@ body.mv-on .docks{visibility:hidden}
 .toast-act{margin-left:var(--s2)}
 #boardBox .row{margin-bottom:var(--s2)}
 #btnTransMute .ic{width:13px;height:13px}
+
+/* ---------- Sources dock (OBS style: eye, name, lock; top layer first) ---------- */
+.srclist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px}
+.src{display:flex;align-items:center;gap:var(--s1);min-height:28px;padding:0 var(--s1);border-radius:var(--r-tag);cursor:pointer;user-select:none}
+.src:hover{background:var(--raised)}
+.src.sel{background:var(--accent-strong);color:var(--on-accent)}
+.src.off .src-nm{opacity:.5}
+.src:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.src-nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:var(--fs-small)}
+.src-ic{display:grid;place-items:center;width:24px;height:24px;flex:none;border:0;border-radius:var(--r-tag);background:transparent;color:inherit;opacity:.75}
+.src-ic:hover:not(:disabled){opacity:1;background:rgba(127,127,127,.2)}
+.src-ic:disabled{opacity:.35;cursor:default}
+.src-ic .ic{width:14px;height:14px}
+.src-ic.on{opacity:1}
+.src-of{margin-left:auto;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ---------- delete takes three presses; the button gets more urgent each time ---------- */
+.tile .del.arm1{background:var(--warn-soft);border-color:var(--warn);color:var(--warn)}
+.tile .del.arm2{background:var(--air);border-color:var(--air);color:var(--on-air);animation:delpulse .5s ease-in-out infinite alternate}
+@keyframes delpulse{to{box-shadow:0 0 0 3px var(--air-soft)}}
+@media (prefers-reduced-motion:reduce){.tile .del.arm2{animation:none}}
+.tile:has(.del.arm1) .acts,.tile:has(.del.arm2) .acts{opacity:1!important;pointer-events:auto!important}

@@ -14,6 +14,12 @@ const params = new URLSearchParams(location.search);
 const TITLE = params.get("title") || "";
 // the side the wall arrives from: right (default), left, top, bottom, or center (bursts outward)
 const DIR = params.get("dir") || "right";
+// pal=purple: Ready Player SITE purple; logo=<png>: draws that wordmark instead of the title text
+const PURPLE = params.get("pal") === "purple";
+const C = PURPLE
+  ? { head: "245,225,255", glyph: "196,92,255", face0: "#2a0b4a", face1: "#0b0316", side: 278, edge: "214,150,255", shade: "8,0,18", ink: "#1a0530", fill: "#fff6b0" }
+  : { head: "225,255,230", glyph: "43,255,106", face0: "#0d3a1a", face1: "#03130a", side: 140, edge: "110,255,150", shade: "0,10,4", ink: "#062b12", fill: "#f6ea4a" };
+const LOGO = params.get("logo") ? Object.assign(new Image(), { src: params.get("logo") }) : null;
 const MAXD = Math.hypot(W / 2, H / 2);
 const keyOf = (x, y) => ({ right: 1 - x / W, left: x / W, top: y / H, bottom: 1 - y / H }[DIR] ?? Math.hypot(x - W / 2, y - H / 2) / MAXD);
 const fromVec = (x, y) => { if (DIR === "center") { const d = Math.hypot(x - W / 2, y - H / 2) || 1; return [-(x - W / 2) / d, -(y - H / 2) / d]; }
@@ -47,7 +53,7 @@ function drawRain(t) {
       const y = head - k * COLW; if (y < -COLW || y > H) continue;
       const g = GLYPHS[hash(c.j, Math.floor(y / COLW), Math.floor(t * 14 + k)) % GLYPHS.length];
       const a = Math.pow(1 - k / c.len, 1.6);
-      rc.fillStyle = k === 0 ? `rgba(225,255,230,${a})` : `rgba(43,255,106,${a * 0.85})`;
+      rc.fillStyle = k === 0 ? `rgba(${C.head},${a})` : `rgba(${C.glyph},${a * 0.85})`;
       rc.fillText(g, c.j * COLW + COLW / 2, y);
     }
   }
@@ -56,18 +62,23 @@ function drawRain(t) {
 /* the cube wall's face texture: dark phosphor green, scanlines, rain, optional title */
 function drawTex(t) {
   const g = tc.createRadialGradient(W / 2, H / 2, 80, W / 2, H / 2, W * 0.7);
-  g.addColorStop(0, "#0d3a1a"); g.addColorStop(1, "#03130a");
+  g.addColorStop(0, C.face0); g.addColorStop(1, C.face1);
   tc.globalCompositeOperation = "source-over"; tc.fillStyle = g; tc.fillRect(0, 0, W, H);
   tc.drawImage(rain, 0, 0);
   tc.fillStyle = "rgba(0,0,0,0.22)"; for (let y = 0; y < H; y += 4) tc.fillRect(0, y, W, 2);
-  if (TITLE && t > 0.42) {
+  if (LOGO && LOGO.complete && t > 0.42) {
+    const a = clamp((t - 0.42) / 0.12), jit = (hash(Math.floor(t * 60), 3, 9) % 9) - 4;
+    const w = 1100, h = w * LOGO.naturalHeight / LOGO.naturalWidth, x = (W - w) / 2, y = (H - h) / 2;
+    tc.save(); tc.globalAlpha = a * 0.5; tc.filter = "blur(14px)"; tc.drawImage(LOGO, x, y, w, h); tc.filter = "none";
+    tc.globalAlpha = a * 0.35; tc.drawImage(LOGO, x - 6 + jit, y, w, h); tc.globalAlpha = a; tc.drawImage(LOGO, x, y, w, h); tc.restore();
+  } else if (TITLE && t > 0.42) {
     const a = clamp((t - 0.42) / 0.12), jit = (hash(Math.floor(t * 60), 3, 9) % 9) - 4;
     tc.save(); tc.globalAlpha = a; tc.textAlign = "center"; tc.textBaseline = "middle";
     tc.font = `170px Impact,"Bahnschrift",sans-serif`;
-    tc.lineJoin = "round"; tc.lineWidth = 14; tc.strokeStyle = "#062b12"; tc.strokeText(TITLE, W / 2, H / 2);
+    tc.lineJoin = "round"; tc.lineWidth = 14; tc.strokeStyle = C.ink; tc.strokeText(TITLE, W / 2, H / 2);
     tc.fillStyle = "rgba(255,60,90,.55)"; tc.fillText(TITLE, W / 2 - 5 + jit, H / 2);
     tc.fillStyle = "rgba(60,220,255,.45)"; tc.fillText(TITLE, W / 2 + 5 - jit, H / 2);
-    tc.fillStyle = "#f6ea4a"; tc.fillText(TITLE, W / 2, H / 2);
+    tc.fillStyle = C.fill; tc.fillText(TITLE, W / 2, H / 2);
     tc.restore();
   }
 }
@@ -135,11 +146,11 @@ function drawCube(cb, st) {
       ctx.setTransform((p1[0] - p0[0]) / TILE, (p1[1] - p0[1]) / TILE, (p3[0] - p0[0]) / TILE, (p3[1] - p0[1]) / TILE, p0[0], p0[1]);
       ctx.drawImage(tex, cb.c * TILE, cb.r * TILE, TILE, TILE, -o, -o, TILE + 2 * o, TILE + 2 * o);
       ctx.restore();
-      if (light < 0.98) { path(q); ctx.fillStyle = `rgba(0,10,4,${(1 - light) * 0.8})`; ctx.fill(); }
+      if (light < 0.98) { path(q); ctx.fillStyle = `rgba(${C.shade},${(1 - light) * 0.8})`; ctx.fill(); }
     } else {
-      path(q); ctx.fillStyle = `hsl(140,80%,${6 + light * 22}%)`; ctx.fill();
+      path(q); ctx.fillStyle = `hsl(${C.side},80%,${6 + light * 22}%)`; ctx.fill();
     }
-    path(q); ctx.strokeStyle = `rgba(110,255,150,${st.edge})`; ctx.lineWidth = 1.2; ctx.stroke();
+    path(q); ctx.strokeStyle = `rgba(${C.edge},${st.edge})`; ctx.lineWidth = 1.2; ctx.stroke();
   }
   ctx.globalAlpha = 1;
 }
@@ -180,6 +191,7 @@ function frame(t) {
   gc.clearRect(0, 0, glow.width, glow.height); gc.filter = "blur(6px)"; gc.drawImage(cv, 0, 0, glow.width, glow.height); gc.filter = "none";
   ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = 0.4; ctx.drawImage(glow, 0, 0, W, H); ctx.restore();
 }
-window.render = (i, fps) => { frame(i / fps); return cv.toDataURL("image/png"); };
-window.coverage = (i, fps) => { frame(i / fps); const d = ctx.getImageData(0, 0, W, H).data; let n = 0; for (let k = 3; k < d.length; k += 4) if (d[k] > 250) n++; return n / (W * H); };
+const SLOW = +(params.get("slow") || 1);
+window.render = (i, fps) => { frame(i / fps / SLOW); return cv.toDataURL("image/png"); };
+window.coverage = (i, fps) => { frame(i / fps / SLOW); const d = ctx.getImageData(0, 0, W, H).data; let n = 0; for (let k = 3; k < d.length; k += 4) if (d[k] > 250) n++; return n / (W * H); };
 </script>

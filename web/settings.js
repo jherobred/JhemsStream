@@ -107,7 +107,7 @@
           ctl: () => btn("Set up OBS", async () => {
             if (S.streaming) return toast("Stop streaming before setting up OBS again.", "warn");
             if (!confirm("Close and reopen OBS now?")) return;
-            close(); await window.JS.obs.call("StopReplayBuffer").catch(() => {}); await window.JS.obs.call("StopVirtualCam").catch(() => {}); try { await (window.Setup?.hold ? Setup.hold(() => T.core.invoke("obs_setup")) : T.core.invoke("obs_setup")); toast("OBS is restarting with remote control on."); } catch (e) { toast("Setup failed: " + e, "bad"); }
+            close(); await window.JS.stopOutputsForRestart(); try { await (window.Setup?.hold ? Setup.hold(() => T.core.invoke("obs_setup")) : T.core.invoke("obs_setup")); toast("OBS is restarting with remote control on."); } catch (e) { toast("Setup failed: " + e, "bad"); }
           }) },
         { title: "Open OBS", desc: "Starts OBS on this computer if it isn’t running.", ctl: () => btn("Open OBS", () => T.core.invoke("obs_launch")) },
       ] : []),

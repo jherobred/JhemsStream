@@ -93,19 +93,37 @@ async fn obs_launch() -> Result<(), String> {
     Ok(())
 }
 
+fn obs_pids() -> Vec<String> {
+    hidden("tasklist")
+        .args(["/FI", "IMAGENAME eq obs64.exe", "/FO", "CSV", "/NH"])
+        .output()
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .filter_map(|l| l.split(',').nth(1).map(|p| p.trim_matches('"').to_string()))
+                .filter(|p| p.chars().all(|c| c.is_ascii_digit()) && !p.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Asks OBS to close and waits for those processes to exit. Another JhemsStream may reopen OBS the moment it closes;
+/// that new process is someone else's, so success is the original ones being gone (callers re-check and close again).
 fn close_obs() -> Result<(), String> {
-    if !obs_running() {
+    let pids = obs_pids();
+    if pids.is_empty() {
         return Ok(());
     }
     let _ = hidden("taskkill").args(["/IM", "obs64.exe"]).output();
     for _ in 0..40 {
         std::thread::sleep(Duration::from_millis(500));
-        if !obs_running() {
+        let now = obs_pids();
+        if !pids.iter().any(|p| now.contains(p)) {
             std::thread::sleep(Duration::from_millis(800));
             return Ok(());
         }
     }
-    Err("OBS did not close. Close it yourself, then press Set up again.".into())
+    Err("OBS did not close. If it shows a dialog, answer it, then try again.".into())
 }
 
 fn random_password() -> String {
@@ -261,10 +279,9 @@ async fn obs_setup(app: tauri::AppHandle) -> Result<ObsInfo, String> {
     // same guard as obs_add_transitions: an OBS reopened meanwhile would save over the edit
     for _ in 0..2 {
         std::thread::sleep(Duration::from_millis(600));
-        if !obs_running() {
+        if !obs_running() || close_obs().is_err() {
             break;
         }
-        close_obs()?;
         added = add_transitions(dir.as_deref());
     }
     obs_launch().await?;
@@ -282,8 +299,12 @@ async fn obs_add_transitions(app: tauri::AppHandle) -> Result<usize, String> {
     let mut added = 0;
     // another JhemsStream (or the user) may reopen OBS while it is closed; an OBS that loaded the old file would
     // save over the edit when it next closes, so close it again and re-apply until the edit lands with OBS shut
-    for _ in 0..3 {
-        close_obs()?;
+    for round in 0..3 {
+        // the first close must work; later ones only guard a reopened OBS, and the file already holds the edit
+        if let Err(e) = close_obs() {
+            if round == 0 { return Err(e); }
+            break;
+        }
         added += add_transitions(Some(&dir))?;
         std::thread::sleep(Duration::from_millis(600));
         if !obs_running() {

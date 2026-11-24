@@ -422,8 +422,8 @@ const Music = (() => {
     sceneRamp = { from: sceneNow(t), to: Math.max(0, level), t0: t, ms: Math.max(0, secs) * 1000 };
     st.sceneLevel = level; scheduleScene(); pushExt(); emit("level");
   }
-  function setDuck(on, depth) { const v = on ? depth : 1; if (v === st.duck) return; st.duck = v; applyBus(on ? 0.05 : 0.35); emit("duck"); }
-  function setMaster(v) { st.master = v; applyBus(0.05); }
+  function setDuck(on, depth) { const v = on ? depth : 1; if (v === st.duck) return; st.duck = v; applyBus(on ? 0.35 : 1.2); emit("duck"); }
+  function setMaster(v) { st.master = v; applyBus(0.4); }
 
   function emit(type, data) { st.listeners.forEach(f => { try { f(type, data); } catch (e) { console.error(e); } }); }
   const label = t => !t ? "" : (t.title && t.author) ? `${t.title}, ${t.author}` : (t.title || "Untitled");

@@ -1,5 +1,19 @@
 [
   {
+    "file": "site-purple-sweep.webm",
+    "name": "READY PLAYER SITE (purple sweep)",
+    "cutPointMs": 1260,
+    "durationMs": 2625,
+    "sound": "site-purple.ogg"
+  },
+  {
+    "file": "site-purple-burst.webm",
+    "name": "READY PLAYER SITE (purple burst)",
+    "cutPointMs": 1260,
+    "durationMs": 2625,
+    "sound": "site-purple.ogg"
+  },
+  {
     "file": "code-rain.webm",
     "name": "Code Rain (from right)",
     "cutPointMs": 840,

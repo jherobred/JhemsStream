@@ -1,6 +1,6 @@
 [package]
 name = "jhemsstream"
-version = "0.6.1"
+version = "0.7.0"
 description = "Volunteer-friendly OBS control panel for livestream crews"
 license = "MIT"
 repository = "https://github.com/jherobred/JhemsStream"

@@ -77,57 +77,90 @@
   /* ================= whole mix: mute all, fade down, fade up ================= */
   // what each source was before a whole-mix mute or fade, so it comes back exactly as it was (a muted mic stays muted)
   let mixMem = store.get("mixMem", null);
-  let mixBusy = false;
+  let mixBusy = null;          // the running fade ("down" | "up" | "mute" | "unmute"), or null
+  let mixStop = false;         // set by Stop: the running fade halts where it is
   const fadeSec = () => store.get("mixFadeSec", 2);
-  const live = () => S.audio.filter(a => !new Set(store.get("mixHidden", [])).has(a.name));
+  // which sources the whole-mix buttons act on: all of them, or the ones picked in "Sources…"
+  const targets = () => store.get("mixTargets", null);
+  const live = () => { const hid = new Set(store.get("mixHidden", [])), t = targets(); return S.audio.filter(a => !hid.has(a.name) && (!t || t.includes(a.name))); };
+  /* every level change glides: steps every 50 ms, stoppable */
   async function ramp(list, from, to, ms) {
     const steps = Math.max(4, Math.round(ms / 50));
     for (let k = 1; k <= steps; k++) {
+      if (mixStop) return false;
       await Promise.all(list.map(a => obs.call("SetInputVolume", { inputName: a.name, inputVolumeDb: from(a) + (to(a) - from(a)) * (k / steps) }).catch(() => {})));
       await sleep(ms / steps);
     }
+    return true;
   }
+  const dbNow = async a => (await obs.call("GetInputVolume", { inputName: a.name }).catch(() => ({ inputVolumeDb: a.db }))).inputVolumeDb;
   async function wholeMix(kind) {
-    if (mixBusy || !S.connected) return;
-    mixBusy = true; renderMixQuick();
+    if (!S.connected) return;
+    if (mixBusy) { mixStop = true; return; } // a second press is Stop
+    mixBusy = kind; mixStop = false; renderMixQuick();
     try {
       if (kind === "down" || kind === "mute") {
         const on = live().filter(a => !a.muted);
-        if (!on.length) return toast("Everything is already muted.", "warn");
-        mixMem = Object.fromEntries(live().map(a => [a.name, { db: a.db, muted: a.muted }])); store.set("mixMem", mixMem);
+        if (!on.length) return toast(targets() ? "The picked sources are already muted." : "Everything is already muted.", "warn");
+        mixMem = { ...(mixMem || {}), ...Object.fromEntries(live().map(a => [a.name, { db: a.db, muted: a.muted }])) }; store.set("mixMem", mixMem);
         on.forEach(a => { a.fading = true; });
-        if (kind === "down") await ramp(on, a => a.db, () => -60, fadeSec() * 1000);
-        await Promise.all(on.map(a => obs.call("SetInputMute", { inputName: a.name, inputMuted: true })));
-        await Promise.all(on.map(a => obs.call("SetInputVolume", { inputName: a.name, inputVolumeDb: mixMem[a.name].db })));
+        const done = kind === "mute" || await ramp(on, a => a.db, () => -60, fadeSec() * 1000);
+        if (done) {
+          await Promise.all(on.map(a => obs.call("SetInputMute", { inputName: a.name, inputMuted: true })));
+          await Promise.all(on.map(a => obs.call("SetInputVolume", { inputName: a.name, inputVolumeDb: mixMem[a.name].db })));
+          toast(kind === "down" ? "Faded down. Fade up brings it back." : "Muted. Unmute all brings it back.");
+        } else toast("Fade stopped where it was. Fade up brings every source back to its level.");
         on.forEach(a => { a.fading = false; });
-        toast(kind === "down" ? "Faded everything down. Fade up brings it back." : "Muted everything. Unmute all brings it back.");
       } else {
         if (!mixMem) return toast("Nothing to bring back. Fade down or Mute all first.", "warn");
         const back = live().filter(a => mixMem[a.name] && !mixMem[a.name].muted);
         back.forEach(a => { a.fading = true; });
-        await Promise.all(back.map(a => obs.call("SetInputVolume", { inputName: a.name, inputVolumeDb: -60 })));
-        await Promise.all(back.map(a => obs.call("SetInputMute", { inputName: a.name, inputMuted: false })));
-        await ramp(back, () => -60, a => mixMem[a.name].db, kind === "up" ? fadeSec() * 1000 : 100);
-        back.forEach(a => { a.fading = false; a.db = mixMem[a.name].db; });
-        mixMem = null; store.set("mixMem", null);
+        // sources a stopped fade left half way start from where they are, muted ones from silence
+        const start = Object.fromEntries(await Promise.all(back.map(async a => [a.name, a.muted ? -60 : await dbNow(a)])));
+        await Promise.all(back.filter(a => a.muted).map(a => obs.call("SetInputVolume", { inputName: a.name, inputVolumeDb: -60 })));
+        await Promise.all(back.filter(a => a.muted).map(a => obs.call("SetInputMute", { inputName: a.name, inputMuted: false })));
+        const done = await ramp(back, a => start[a.name], a => mixMem[a.name].db, kind === "up" ? fadeSec() * 1000 : 300);
+        back.forEach(a => { a.fading = false; });
+        if (done) { for (const a of back) { a.db = mixMem[a.name].db; delete mixMem[a.name]; } if (!Object.keys(mixMem).some(n => live().some(a => a.name === n))) mixMem = null; store.set("mixMem", mixMem); }
+        else toast("Fade stopped where it was.");
       }
-    } finally { mixBusy = false; renderMixQuick(); }
+    } finally { mixBusy = null; mixStop = false; renderMixQuick(); }
   }
+  /* raise or lower the picked sources together, gradually */
   async function nudgeAll(db) {
-    for (const a of live().filter(a => !a.muted)) {
-      const to = Math.max(-60, Math.min(6, a.db + db));
-      obs.call("SetInputVolume", { inputName: a.name, inputVolumeDb: to }).catch(() => {});
-    }
+    const on = live().filter(a => !a.muted); if (!on.length || mixBusy) return;
+    mixBusy = "nudge"; renderMixQuick();
+    const from = Object.fromEntries(await Promise.all(on.map(async a => [a.name, await dbNow(a)])));
+    try { await ramp(on, a => from[a.name], a => Math.max(-60, Math.min(6, from[a.name] + db)), 600); } finally { mixBusy = null; mixStop = false; renderMixQuick(); }
+  }
+  /* one source to a set level, gradually (right-click presets) */
+  async function glide(a, to) {
+    const from = await dbNow(a), steps = 12;
+    for (let k = 1; k <= steps; k++) { await obs.call("SetInputVolume", { inputName: a.name, inputVolumeDb: from + (to - from) * (k / steps) }).catch(() => {}); await sleep(40); }
+  }
+  function pickTargets() {
+    const dlg = h("dialog", { class: "editor-dlg" }), body = h("div", { class: "dlg-body" }), foot = h("div", { class: "dlg-foot row" });
+    dlg.append(h("div", { class: "dlg-head row" }, h("h3", {}, "Mute all and fades act on")), body, foot);
+    dlg.addEventListener("close", () => dlg.remove()); document.body.append(dlg);
+    const t = targets(), boxes = S.audio.map(a => { const cb = h("input", { type: "checkbox", id: `mt-${a.name}` }); cb.checked = !t || t.includes(a.name); return [a.name, cb]; });
+    body.append(h("p", { class: "muted small" }, "Untick sources that should keep playing, like the casters' mics during a fade to music."),
+      ...boxes.map(([n, cb]) => h("label", { class: "check", for: cb.id }, cb, n)));
+    foot.append(h("button", { type: "button", class: "btn", onclick: () => boxes.forEach(([, cb]) => { cb.checked = true; }) }, "All"), h("span", { class: "grow" }),
+      h("button", { type: "button", class: "btn primary", onclick: () => { const on = boxes.filter(([, cb]) => cb.checked).map(([n]) => n); store.set("mixTargets", on.length === boxes.length ? null : on); renderMixQuick(); dlg.close(); } }, "Done"));
+    dlg.showModal();
   }
   function renderMixQuick() {
     const box = $("#mixQuick"); if (!box) return;
     box.textContent = "";
-    const anyMem = !!mixMem;
-    const btn = (ic, label, fn, title, on) => h("button", { type: "button", class: `qbtn${on ? " on" : ""}`, title, disabled: mixBusy, onclick: fn, "aria-pressed": on != null ? String(!!on) : false }, icon(ic), h("span", {}, label));
+    const anyMem = !!mixMem, t = targets();
+    const btn = (ic, label, fn, title, on) => h("button", { type: "button", class: `qbtn${on ? " on" : ""}`, title, onclick: fn, "aria-pressed": on != null ? String(!!on) : false }, icon(ic), h("span", {}, label));
+    const stop = k => mixBusy === k ? btn("close", "Stop", () => wholeMix(k), "Stop the fade where it is", true) : null;
+    const who = t ? `${t.length} picked source${t.length === 1 ? "" : "s"}` : "every source";
     box.append(
-      btn("mute", anyMem ? "Unmute all" : "Mute all", () => wholeMix(anyMem ? "unmute" : "mute"), anyMem ? "Bring every source back as it was" : "Mute every source now", anyMem),
-      btn("down", "Fade down", () => wholeMix("down"), `Fade every source down to silence over ${fadeSec()} s`),
-      btn("up", "Fade up", () => wholeMix("up"), `Fade every source back up over ${fadeSec()} s`));
+      stop("down") || stop("up") || stop("mute") || stop("unmute") || btn("mute", anyMem ? "Unmute all" : "Mute all", () => wholeMix(anyMem ? "unmute" : "mute"), anyMem ? `Bring ${who} back as it was` : `Mute ${who} now`, anyMem),
+      mixBusy ? null : btn("down", "Fade down", () => wholeMix("down"), `Fade ${who} down to silence over ${fadeSec()} s`),
+      mixBusy ? null : btn("up", "Fade up", () => wholeMix("up"), `Fade ${who} back up over ${fadeSec()} s`),
+      btn("gear", t ? `${t.length} sources` : "All sources", pickTargets, "Choose which sources Mute all and the fades act on", !!t));
   }
   $("#mixQuick")?.addEventListener("contextmenu", e => {
     e.preventDefault();
@@ -142,9 +175,9 @@
     e.preventDefault();
     const row = e.target.closest(".mixrow"), hidden = store.get("mixHidden", []);
     const unhide = hidden.length ? [{ label: `Show hidden sources (${hidden.length})`, fn: () => { store.set("mixHidden", []); JS.renderMixer(); } }] : [];
-    if (!row) return menu(...at(e), [{ head: "Audio Mixer" }, { label: "Mute all", fn: () => wholeMix("mute") }, { label: "Fade down", fn: () => wholeMix("down") }, { label: "Fade up", fn: () => wholeMix("up") }, unhide.length ? "-" : null, ...unhide]);
+    if (!row) return menu(...at(e), [{ head: "Audio Mixer" }, { label: "Mute all", fn: () => wholeMix("mute") }, { label: "Fade down", fn: () => wholeMix("down") }, { label: "Fade up", fn: () => wholeMix("up") }, { label: "Choose sources for Mute all and fades…", fn: pickTargets }, unhide.length ? "-" : null, ...unhide]);
     const a = S.audio.find(x => x.name === row.dataset.input); if (!a) return;
-    const vol = db => () => obs.call("SetInputVolume", { inputName: a.name, inputVolumeDb: db });
+    const vol = db => () => glide(a, db);
     menu(...at(e), [{ head: a.name },
       { label: a.muted ? "Unmute (fade in)" : "Mute (fade out)", fn: () => JS.fadeMute(a) },
       { label: "Hear in headphones", checked: a.monitor, fn: () => JS.toggleMonitor(a) }, "-",
@@ -211,6 +244,7 @@
       { label: "Cut to it now", disabled: live, fn: async () => { if (S.studio) { await call("SetCurrentPreviewScene", { sceneName: name }); await JS.cut(); } else await call("SetCurrentProgramScene", { sceneName: name }); } },
       "-",
       ...(border && canEdit() ? border.t.slots.filter(s => !s.replay).map(s => ({ label: `Change ${s.label.toLowerCase()}…`, fn: () => Borders.pickSlot(name, s) })) : []),
+      ...(window.Site && (await Site.screenOf(name)) ? [{ label: "Edit screen text…", fn: () => Site.editScreen(name) }] : []),
       { label: "Edit scene…", fn: () => window.Editor?.openEdit(name) },
       canEdit() ? { label: "Add source…", fn: () => window.Editor?.openNew(name) } : null,
       isDirector() ? { label: "Rename…", fn: () => JS.renameScene(name) } : null,
@@ -218,7 +252,7 @@
       "-", { head: "Shortcut" },
       ...ROLES.map(([k, l]) => ({ label: l, checked: roles[k] === name, fn: () => setRole(k, roles[k] === name ? null : name) })),
       "-",
-      isDirector() ? { label: "Delete", danger: true, disabled: live, fn: () => JS.deleteScene(name) } : null]);
+      isDirector() ? { label: "Delete (3 presses of the trash button)", danger: true, disabled: live, fn: () => { const b = JS.tileEls.get(name)?.querySelector(".del"); JS.armDelete(b, name); b?.focus(); toast(`Press the trash button on ${name} 2 more times to delete it.`, "warn"); } } : null]);
   });
   /* obs-websocket has no "duplicate scene": make a new scene and add every item again with its transform */
   async function duplicateScene(name) {
@@ -233,9 +267,11 @@
   }
 
   /* ================= docks: drag a title to move, drag an edge to resize, right-click to hide ================= */
-  const DOCKS = { scenes: "Scenes", mixer: "Audio Mixer", music: "Music", show: "Scores and stream", controls: "Controls" };
-  const DEFAULT_W = { scenes: 1, mixer: 1.25, music: 1.4, show: 1.2, controls: 0.6 };
+  const DOCKS = { scenes: "Scenes", sources: "Sources", mixer: "Audio Mixer", music: "Music", show: "Scores and stream", controls: "Controls" };
+  const DEFAULT_W = { scenes: 1, sources: 0.9, mixer: 1.2, music: 1.25, show: 1.15, controls: 0.6 };
   let layout = { order: Object.keys(DOCKS), hidden: [], w: { ...DEFAULT_W }, ...store.get("dockLayout", {}) };
+  if (!layout.order.includes("sources")) layout.order.splice(Math.max(0, layout.order.indexOf("scenes") + 1), 0, "sources");
+  layout.w = { ...DEFAULT_W, ...layout.w };
   layout.order = [...layout.order.filter(k => DOCKS[k]), ...Object.keys(DOCKS).filter(k => !layout.order.includes(k))];
   const dockEl = k => $(`[data-dock="${k}"]`);
   function applyLayout() {
@@ -320,6 +356,7 @@
       if (PV.drag) return;
       if (sc !== PV.scene) { PV.sel = null; PV.scene = sc; }
       PV.items = items; PV.tf = new Map(items.map((it, i) => [it.sceneItemId, tfs[i]]));
+      queueMicrotask(renderSources);
       if (PV.sel != null && !items.some(i => i.sceneItemId === PV.sel)) PV.sel = null;
       draw();
     } catch {} finally { PV.busy = false; }
@@ -331,6 +368,7 @@
   const W = () => S.canvas.w, H = () => S.canvas.h;
   const visible = it => it.sceneItemEnabled && !AUDIO_ONLY.test(it.inputKind || "") && PV.tf.get(it.sceneItemId);
   function draw() {
+    if (!PV.drag) queueMicrotask(renderSources);
     for (const ov of ovs) { ov.querySelectorAll(".pv-box").forEach(b => b.remove()); ov.classList.remove("live"); ov.querySelector(".pv-live").hidden = true; }
     const ov = curOv(); if (!ov || !editOn()) return;
     const box = (id, cls) => {
@@ -440,9 +478,9 @@
     if (!confirm(`Remove "${it.sourceName}" from ${PV.scene}?${isLiveEdit() ? "\n\nThis screen is on air." : ""}`)) return;
     await call("RemoveSceneItem", { sceneName: PV.scene, sceneItemId: id }); PV.sel = null; loadItems(true);
   }
-  async function pvMenu(e, ov) {
+  async function pvMenu(e, ov, forced) {
     // the source under the cursor, else the selection, else a locked layer (border, scoreboard) to unlock it
-    const [x, y] = toCanvas(ov, e), id = hit(x, y) ?? PV.sel ?? hit(x, y, true);
+    const [x, y] = ov ? toCanvas(ov, e) : [-1, -1], id = forced ?? (hit(x, y) ?? PV.sel ?? hit(x, y, true));
     if (id != null && id !== PV.sel) { PV.sel = id; draw(); }
     const it = PV.items.find(i => i.sceneItemId === id), t = it && PV.tf.get(id);
     const border = await window.Borders?.detect(PV.scene);
@@ -452,6 +490,8 @@
       ...(border ? border.t.slots.filter(s => !s.replay).map(s => ({ label: `Change ${s.label.toLowerCase()}…`, fn: () => Borders.pickSlot(PV.scene, s) })) : []),
       { label: "Edit sources on the monitor", checked: editOn(), fn: () => { store.set("pvEdit", !editOn()); PV.sel = null; draw(); } },
       { label: "Multiview", key: "M", fn: openMv }];
+    const screenText = window.Site && (await Site.screenOf(PV.scene)) ? [{ label: "Edit screen text…", fn: () => Site.editScreen(PV.scene) }] : [];
+    sceneItems.splice(3, 0, ...screenText);
     if (!it || !editOn()) return menu(e.clientX, e.clientY, sceneItems.filter(x => x?.label !== "Add source…" || canEdit()));
     const n = PV.items.length, idx = it.sceneItemIndex, { w: CW, h: CH } = S.canvas;
     const r = EdMath.rectOf(t);
@@ -462,6 +502,7 @@
       { label: "Send backward", disabled: idx === 0, fn: () => itemCall("SetSceneItemIndex", { sceneItemIndex: idx - 1 }) },
       { label: "Send to back", disabled: idx === 0, fn: () => itemCall("SetSceneItemIndex", { sceneItemIndex: 0 }) }, "-",
       slot ? { label: `Fit to the ${slot.label.toLowerCase()}`, fn: () => window.Editor.placeItem(PV.scene, id, { x: slot.rect[0] * CW / 1920, y: slot.rect[1] * CH / 1080, w: slot.rect[2] * CW / 1920, h: slot.rect[3] * CH / 1080 }) } : null,
+      { label: "Fill screen (no black bars)", fn: () => itemCall("SetSceneItemTransform", { sceneItemTransform: { boundsType: "OBS_BOUNDS_SCALE_OUTER", boundsWidth: CW, boundsHeight: CH, boundsAlignment: 0, alignment: 0, positionX: CW / 2, positionY: CH / 2 } }) },
       { label: "Fit to screen", key: "Ctrl F", fn: () => itemCall("SetSceneItemTransform", { sceneItemTransform: { boundsType: "OBS_BOUNDS_SCALE_INNER", boundsWidth: CW, boundsHeight: CH, boundsAlignment: 0, alignment: 5, positionX: 0, positionY: 0 } }) },
       { label: "Stretch to screen", key: "Ctrl S", fn: () => itemCall("SetSceneItemTransform", { sceneItemTransform: { boundsType: "OBS_BOUNDS_STRETCH", boundsWidth: CW, boundsHeight: CH, boundsAlignment: 0, alignment: 5, positionX: 0, positionY: 0 } }) },
       { label: "Center on screen", key: "Ctrl D", fn: () => setRect(id, { ...r, x: (CW - r.w) / 2, y: (CH - r.h) / 2 }, true) },
@@ -472,6 +513,8 @@
       { label: "Visible", checked: it.sceneItemEnabled, fn: () => itemCall("SetSceneItemEnabled", { sceneItemEnabled: !it.sceneItemEnabled }) },
       { label: "Locked", checked: it.sceneItemLocked, fn: () => itemCall("SetSceneItemLocked", { sceneItemLocked: !it.sceneItemLocked }) },
       !isDirector() ? null : { label: "Rename source…", fn: async () => { const nn = prompt(`Rename "${it.sourceName}" to:`, it.sourceName); if (nn && nn.trim() && nn !== it.sourceName) await call("SetInputName", { inputName: it.sourceName, newInputName: nn.trim() }); } },
+      { label: "Properties…", fn: () => props(it) },
+      { label: "Filters (opens in OBS)", fn: () => call("OpenInputFiltersDialog", { inputName: it.sourceName }).then(() => toast("Filters opened in OBS on the streaming PC.")) },
       isDirector() ? { label: "Remove from scene", key: "Del", danger: true, fn: () => removeItem(id) } : null, "-",
       ...sceneItems]);
   }
@@ -487,6 +530,52 @@
     else return;
     e.preventDefault(); setTimeout(() => loadItems(true), 120);
   });
+
+  /* ================= Sources dock ================= */
+  /* properties: SITE screens and the chat link edit here; text edits here; anything else opens OBS's own dialog */
+  async function props(it) {
+    if (window.Site && (it.sourceName.startsWith("SITE Screen · ") || it.sourceName === Site.CHAT)) return Site.editScreen(PV.scene, it.sourceName);
+    if (/^text_/.test(it.inputKind || "")) {
+      const cur = (await call("GetInputSettings", { inputName: it.sourceName })).inputSettings.text || "";
+      const t = prompt(`Text of "${it.sourceName}":`, cur); if (t != null && t !== cur) await call("SetInputSettings", { inputName: it.sourceName, inputSettings: { text: t } });
+      return;
+    }
+    if (it.isGroup || !it.inputKind) return toast("That layer is a whole scene. Pick it in Scenes to edit what's inside.", "warn");
+    await call("OpenInputPropertiesDialog", { inputName: it.sourceName });
+    toast(`${it.sourceName}: properties opened in OBS on the streaming PC.`);
+  }
+  let srcKey = "";
+  function renderSources() {
+    const box = $("#sources"); if (!box) return;
+    const key = [PV.scene, PV.sel, ...PV.items.map(i => `${i.sceneItemId}:${i.sceneItemEnabled}:${i.sceneItemLocked}:${i.sourceName}`)].join("|");
+    if (key === srcKey) return; srcKey = key;
+    $("#srcOf").textContent = PV.scene || "";
+    box.textContent = "";
+    const edit = canEdit();
+    for (const it of PV.items) {
+      const id = it.sceneItemId, toggle = (type, field) => e => { e.stopPropagation(); if (edit) call(type, { sceneName: PV.scene, sceneItemId: id, [field]: !it[field] }).then(() => loadItems(true)); };
+      const li = h("li", { class: `src${id === PV.sel ? " sel" : ""}${it.sceneItemEnabled ? "" : " off"}`, tabindex: "0", role: "option", "aria-selected": String(id === PV.sel) },
+        h("button", { type: "button", class: "src-ic", disabled: !edit, title: it.sceneItemEnabled ? "Hide" : "Show", "aria-label": `${it.sceneItemEnabled ? "Hide" : "Show"} ${it.sourceName}`, onclick: toggle("SetSceneItemEnabled", "sceneItemEnabled") }, icon(it.sceneItemEnabled ? "eye" : "eyeoff")),
+        h("span", { class: "src-nm", title: it.sourceName }, it.sourceName),
+        h("button", { type: "button", class: `src-ic${it.sceneItemLocked ? " on" : ""}`, disabled: !edit, title: it.sceneItemLocked ? "Unlock" : "Lock", "aria-label": `${it.sceneItemLocked ? "Unlock" : "Lock"} ${it.sourceName}`, onclick: toggle("SetSceneItemLocked", "sceneItemLocked") }, icon(it.sceneItemLocked ? "lock" : "unlock")));
+      const select = () => { PV.sel = id; draw(); renderSources(); };
+      li.addEventListener("click", select);
+      li.addEventListener("dblclick", () => props(it));
+      li.addEventListener("keydown", e => { if (e.key === "Enter") props(it); else if (e.key === "Delete" && isDirector()) removeItem(id); });
+      li.addEventListener("contextmenu", e => { e.preventDefault(); select(); pvMenu(e, null, id); });
+      box.append(li);
+    }
+    if (!PV.items.length && PV.scene) box.append(h("li", { class: "empty" }, "Nothing here yet. Press + to add a source."));
+    const foot = $("#srcFoot"); foot.textContent = "";
+    const sel = PV.items.find(i => i.sceneItemId === PV.sel), n = PV.items.length;
+    const fb = (ic, label, fn, dis) => h("button", { type: "button", class: "btn small icon", title: label, "aria-label": label, disabled: !!dis, onclick: fn }, icon(ic));
+    foot.append(
+      fb("plus", "Add source", () => window.Editor?.openNew(PV.scene), !edit || !PV.scene),
+      fb("minus", "Remove from scene", () => removeItem(PV.sel), !isDirector() || !sel),
+      fb("gear2", "Properties", () => props(sel), !sel),
+      fb("up", "Move up", () => itemCall("SetSceneItemIndex", { sceneItemIndex: Math.min(n - 1, sel.sceneItemIndex + 1) }).then(() => loadItems(true)), !edit || !sel || sel.sceneItemIndex >= n - 1),
+      fb("down", "Move down", () => itemCall("SetSceneItemIndex", { sceneItemIndex: Math.max(0, sel.sceneItemIndex - 1) }).then(() => loadItems(true)), !edit || !sel || sel.sceneItemIndex <= 0));
+  }
 
   /* Program monitor menu (in Studio Mode it isn't editable, like OBS) */
   $("#imgProgram")?.parentElement.addEventListener("contextmenu", e => {
@@ -575,6 +664,6 @@
   $("#role")?.addEventListener("change", () => { PV.sel = null; draw(); });
   JS.onReady(async () => { roles = await shared.get("roles", {}) || {}; decorateTiles(); loadItems(true); renderMixQuick(); });
 
-  window.Studio = { menu, closeMenu, setZoom, get zoom() { return zoom; }, ZOOMS, decorateTiles, openMv, closeMv, resetLayout, wholeMix,
+  window.Studio = { reloadRoles: async () => { roles = await shared.get("roles", {}) || {}; decorateTiles(); }, menu, closeMenu, setZoom, get zoom() { return zoom; }, ZOOMS, decorateTiles, openMv, closeMv, resetLayout, wholeMix,
     get layout() { return layout; }, showDock: k => { layout.hidden = layout.hidden.filter(x => x !== k); applyLayout(); }, DOCKS, editOn, setEditOn: v => { store.set("pvEdit", !!v); PV.sel = null; draw(); } };
 })();

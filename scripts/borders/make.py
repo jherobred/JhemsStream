@@ -18,6 +18,14 @@ GAME = (93, 84, 1735, 976)                  # Gameplay and Instant Replay: 16:9,
 SPLIT_GAME = (40, 84, 1448, 815)            # Gameplay + Chat: 16:9 game on the left
 SPLIT_CHAT = (1508, 84, 372, 815)           # chat panel on the right (a dark panel, the chat source sits on it)
 CHAT_SLOT = (1516, 130, 356, 761)           # where the chat source goes inside the panel
+# Game + Cams: a 16:9 game window with a camera window in each bottom corner (BG1 and BG2 versions)
+CG = (256, 78, 1408, 792)
+CAM_L = (24, 876, 336, 189)
+CAM_R = (1560, 876, 336, 189)
+# Casters (BG2): two 16:9 camera windows side by side, a name plate under each
+CAST_L = (112, 214, 832, 468)
+CAST_R = (976, 214, 832, 468)
+PLATE_Y, PLATE_H = 700, 64
 NEON = (196, 92, 255)                       # the purple of SITE's grid
 NEON_HOT = (255, 120, 230)
 CYAN = (90, 220, 255)
@@ -196,11 +204,104 @@ def main():
     print("wrote border-chat.png")
 
 
+def erase(im, boxes):
+    """Remove SITE's own lettering from the art so a moved copy doesn't leave a ghost: the letters (found the same way
+    key_white finds them, then grown a little) are filled from the surrounding background by normalised blurring."""
+    import numpy as np
+    a = np.asarray(im.convert("RGB"), dtype=np.float32)
+    mask = Image.new("L", (W, H), 0)
+    for x0, y0, x1, y1 in boxes:
+        k = key_white(im.crop((x0, y0, x1, y1)), lo=40).getchannel("A").point(lambda v: 255 if v > 20 else 0)
+        mask.paste(k.filter(ImageFilter.MaxFilter(11)), (x0, y0))
+    m = np.asarray(mask, dtype=np.float32)[..., None] / 255
+    keep = 1 - m
+    out = a.copy()
+    for r in (6, 18, 48):  # small radius first keeps texture; the larger ones fill what is left
+        num = np.asarray(Image.fromarray((a * keep).astype(np.uint8)).filter(ImageFilter.GaussianBlur(r)), dtype=np.float32)
+        den = np.asarray(Image.fromarray((keep[..., 0] * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(r)), dtype=np.float32)[..., None] / 255
+        fill = num / np.maximum(den, 1e-3)
+        ok = (den > 0.25) & (m > 0)
+        out = np.where(ok, fill, out)
+        m = np.where(ok, 0, m)
+    res = Image.fromarray(np.clip(out, 0, 255).astype(np.uint8)).convert("RGBA")
+    res.putalpha(im.getchannel("A"))
+    return res
+
+
+def frame_layout(im, holes, top=None, bottom=None, logo=None, cams=()):
+    """Shade the bars, frame every window, place art, then cut the windows last."""
+    shade(im, (0, 0, W, holes[0][1]), 215, 140)
+    for h_ in holes:
+        glow_frame(im, h_, corners=h_ not in cams)
+    if top:
+        art, x, y, hh, anchor = top
+        paste_h(im, art, x, y, hh, anchor)
+    if logo:
+        paste_h(im, logo, 1818, 12, 52, "r")
+    if bottom:
+        art, x, y, hh, anchor = bottom
+        paste_h(im, art, x, y, hh, anchor)
+    for h_ in holes:
+        cut(im, h_)
+
+
+def more(bg1, bg2):
+    """BG2 borders, Game + Cams borders, casters, full-frame bumper backgrounds, wordmark exports."""
+    wm1 = key_white(bg1.crop((290, 950, 1075, 1062)))
+    logo = key_white(bg1.crop((1462, 940, 1825, 1012)))
+    wm2top = key_white(bg2.crop((170, 70, 1180, 165)))
+    wm2bot = key_white(bg2.crop((110, 920, 1275, 1010)))
+    for art, n in [(wm1, "site-wordmark.png"), (logo, "site-logo.png"), (wm2top, "site-title.png"), (wm2bot, "site-esports.png")]:
+        art.save(OUT / n, optimize=True)
+    b1 = erase(backdrop(bg1), [(290, 950, 1075, 1062), (1462, 940, 1825, 1012)])
+    b2 = erase(backdrop(bg2), [(170, 70, 1180, 165), (110, 920, 1275, 1010), (1490, 955, 1865, 1040)])
+
+    # BG2 "Arena": the same 90% game window as SITE Gameplay, in BG2's neon corridor art
+    im = b2.copy()
+    shade(im, (0, GAME[1] + GAME[3], W, H), 120, 200)
+    frame_layout(im, [GAME], top=(wm2top, 104, 25, 34, "l"), logo=logo)
+    check_holes(im, [GAME], "border-arena.png"); im.save(OUT / "border-arena.png", optimize=True)
+
+    # Game + Cams, BG1 and BG2
+    for name, base, art in [("border-cams.png", b1, wm1), ("border-arena-cams.png", b2, wm2bot)]:
+        im = base.copy()
+        shade(im, (CAM_L[0] + CAM_L[2], CG[1] + CG[3], CAM_R[0], H), 90, 200)
+        bottom = (art, W // 2, 922, 84 if art is wm1 else 52, "c")
+        top = (wm2top, 24, 25, 30, "l") if art is wm2bot else (wm1, 24, 10, 58, "l")
+        frame_layout(im, [CG, CAM_L, CAM_R], top=top, logo=logo, bottom=bottom, cams=(CAM_L, CAM_R))
+        check_holes(im, [CG, CAM_L, CAM_R], name); im.save(OUT / name, optimize=True)
+
+    # Casters (BG2): two camera windows and name plates
+    im = b2.copy()
+    shade(im, (0, 0, W, H), 110, 110)
+    for x, y, w, h_ in (CAST_L, CAST_R):
+        plate = Image.new("RGBA", (W, H)); d = ImageDraw.Draw(plate)
+        d.rounded_rectangle([x + 60, PLATE_Y, x + w - 60, PLATE_Y + PLATE_H], radius=8, fill=(30, 8, 58, 240), outline=NEON + (255,), width=2)
+        d.polygon([(x + 60, PLATE_Y + PLATE_H - 4), (x + w - 60, PLATE_Y + PLATE_H - 4), (x + w - 60, PLATE_Y + PLATE_H)], fill=NEON_HOT + (255,))
+        im.alpha_composite(plate.filter(ImageFilter.GaussianBlur(8))); im.alpha_composite(plate)
+    frame_layout(im, [CAST_L, CAST_R], top=(wm2top, W // 2, 70, 70, "c"), bottom=(wm2bot, W // 2, 902, 56, "c"))
+    paste_h(im, logo, 1880, 1000, 48, "r")
+    check_holes(im, [CAST_L, CAST_R], "border-casters.png"); im.save(OUT / "border-casters.png", optimize=True)
+
+    # full-frame backgrounds for the bumper screens (title cards, matchups, win screens' frame, awards)
+    # backgrounds keep SITE's own lettering where it is: nothing moves on them, so nothing to erase
+    for name, base in [("bg-site1.jpg", backdrop(bg1)), ("bg-site2.jpg", backdrop(bg2))]:
+        im = base.copy()
+        v = Image.new("RGBA", (W, H)); d = ImageDraw.Draw(v)
+        for i in range(60):
+            d.rectangle([i * 8, i * 5, W - i * 8, H - i * 5], outline=(0, 0, 0, 3))
+        im.alpha_composite(v)
+        im.convert("RGB").save(OUT / name, quality=88)
+    print("wrote BG2, cams, casters, backgrounds, wordmarks")
+
+
 def thumbs():
     """320x180 previews for the Add scene dialog (web/img), the windows shown as labelled grey."""
     dst = HERE.parent.parent / "web" / "img"
     dst.mkdir(exist_ok=True)
-    for name, wins in [("gameplay", [(GAME, "GAME")]), ("chat", [(SPLIT_GAME, "GAME"), (CHAT_SLOT, "CHAT")]), ("replay", [(GAME, "REPLAY")])]:
+    for name, wins in [("gameplay", [(GAME, "GAME")]), ("chat", [(SPLIT_GAME, "GAME"), (CHAT_SLOT, "CHAT")]), ("replay", [(GAME, "REPLAY")]),
+                       ("arena", [(GAME, "GAME")]), ("cams", [(CG, "GAME"), (CAM_L, "CAM"), (CAM_R, "CAM")]),
+                       ("arena-cams", [(CG, "GAME"), (CAM_L, "CAM"), (CAM_R, "CAM")]), ("casters", [(CAST_L, "CAM"), (CAST_R, "CAM")])]:
         im = Image.new("RGBA", (W, H), (58, 60, 72, 255))
         d = ImageDraw.Draw(im)
         for (x, y, w, h), label in wins:
@@ -215,4 +316,5 @@ def thumbs():
 
 if __name__ == "__main__":
     main()
+    more(Image.open(HERE / "src" / "bg1.png").convert("RGBA"), Image.open(HERE / "src" / "bg2.png").convert("RGBA"))
     thumbs()

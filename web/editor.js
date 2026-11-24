@@ -137,13 +137,14 @@ if (typeof window !== "undefined") (() => {
   /* size: "full", "corner", or a window {x, y, w, h} in canvas pixels (a SITE border slot: fit inside it, keep layer order) */
   async function placeItem(scene, id, size) {
     const { w, h: H } = JS.S.canvas;
+    // windows and full screen are covered edge to edge (no black bars); what spills over is cut by the canvas or the border
     if (size && typeof size === "object") {
       return call("SetSceneItemTransform", { sceneName: scene, sceneItemId: id, sceneItemTransform: {
-        boundsType: "OBS_BOUNDS_SCALE_INNER", boundsWidth: size.w, boundsHeight: size.h, boundsAlignment: 0, alignment: 5, positionX: size.x, positionY: size.y } });
+        boundsType: "OBS_BOUNDS_SCALE_OUTER", boundsWidth: size.w, boundsHeight: size.h, boundsAlignment: 0, alignment: 0, positionX: size.x + size.w / 2, positionY: size.y + size.h / 2 } });
     }
     const t = size === "corner"
       ? { boundsType: "OBS_BOUNDS_SCALE_INNER", boundsWidth: w * 0.28, boundsHeight: H * 0.28, boundsAlignment: 0, alignment: 5, positionX: w * 0.7, positionY: H * 0.7 }
-      : { boundsType: "OBS_BOUNDS_SCALE_INNER", boundsWidth: w, boundsHeight: H, boundsAlignment: 0, alignment: 5, positionX: 0, positionY: 0 };
+      : { boundsType: "OBS_BOUNDS_SCALE_OUTER", boundsWidth: w, boundsHeight: H, boundsAlignment: 0, alignment: 0, positionX: w / 2, positionY: H / 2 };
     await call("SetSceneItemTransform", { sceneName: scene, sceneItemId: id, sceneItemTransform: t });
     // full-screen sources go behind overlays (scoreboard, text)
     if (size !== "corner") await call("SetSceneItemIndex", { sceneName: scene, sceneItemId: id, sceneItemIndex: 0 });

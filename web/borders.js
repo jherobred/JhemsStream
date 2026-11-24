@@ -19,7 +19,32 @@
     { id: "replay", label: "SITE Instant Replay", file: "border-replay.png", thumb: "img/tpl-replay.jpg", board: false,
       desc: "The gameplay frame with an INSTANT REPLAY plate. Instant replays air here.",
       slots: [{ id: "replay", label: "Replay", rect: [93, 84, 1735, 976], above: false, replay: true }] },
+    { id: "cams", label: "SITE Gameplay + Cams", file: "border-cams.png", thumb: "img/tpl-cams.jpg", board: true,
+      desc: "Game in the middle, a camera window in each bottom corner, scoreboard on top.",
+      slots: [{ id: "game", label: "Game window", rect: [256, 78, 1408, 792], above: false },
+              { id: "camL", label: "Left camera", rect: [24, 876, 336, 189], above: false },
+              { id: "camR", label: "Right camera", rect: [1560, 876, 336, 189], above: false }] },
+    { id: "arena", label: "SITE Arena (BG2)", file: "border-arena.png", thumb: "img/tpl-arena.jpg", board: true,
+      desc: "BG2's neon corridor art as a thin frame, game fills 90% of the screen.",
+      slots: [{ id: "game", label: "Game window", rect: [93, 84, 1735, 976], above: false }] },
+    { id: "arena-cams", label: "SITE Arena + Cams (BG2)", file: "border-arena-cams.png", thumb: "img/tpl-arena-cams.jpg", board: true,
+      desc: "BG2 art, game in the middle and a camera window in each bottom corner.",
+      slots: [{ id: "game", label: "Game window", rect: [256, 78, 1408, 792], above: false },
+              { id: "camL", label: "Left camera", rect: [24, 876, 336, 189], above: false },
+              { id: "camR", label: "Right camera", rect: [1560, 876, 336, 189], above: false }] },
+    { id: "casters", label: "SITE Casters (BG2)", file: "border-casters.png", thumb: "img/tpl-casters.jpg", board: false,
+      desc: "Two caster cameras side by side with name plates, BG2 art.",
+      slots: [{ id: "cam1", label: "Caster 1 camera", rect: [112, 214, 832, 468], above: false },
+              { id: "cam2", label: "Caster 2 camera", rect: [976, 214, 832, 468], above: false }] },
   ];
+  /* a window's source fills it edge to edge: scaled to cover (no black bars) and centred; the border on top hides
+     the overflow. Windows that sit above the border (chat) fit inside instead. */
+  async function placeIn(scene, id, slot) {
+    const r = scaleRect(slot.rect);
+    await call("SetSceneItemTransform", { sceneName: scene, sceneItemId: id, sceneItemTransform: {
+      boundsType: slot.above ? "OBS_BOUNDS_SCALE_INNER" : "OBS_BOUNDS_SCALE_OUTER", boundsWidth: r.w, boundsHeight: r.h, boundsAlignment: 0,
+      alignment: 0, positionX: r.x + r.w / 2, positionY: r.y + r.h / 2 } });
+  }
   const borderName = t => `SITE Border: ${t.label.replace(/^SITE /, "")}`;
   const scaleRect = ([x, y, w, h]) => { const kx = S.canvas.w / 1920, ky = S.canvas.h / 1080; return { x: x * kx, y: y * ky, w: w * kx, h: h * ky }; };
   let dir = null;
@@ -117,6 +142,18 @@
       name = (prompt("Name for the new screen:", name) || "").trim();
       if (!name) return;
       if (S.scenes.includes(name)) return toast("A screen with that name already exists.", "warn");
+      await build(name, id);
+      await JS.refreshScenes(); JS.refreshInputs();
+      if (S.studio) JS.pickScene(name);
+      toast(`${name} is ready.${t.slots.some(s => !s.replay) ? " Pick what shows in its window." : " Instant replays now air on it."}`, "ok");
+      const open = t.slots.filter(s => !s.replay);
+      if (open.length) pickSlot(name, open[0], open.slice(1));
+    } catch (e) { toast("Couldn't make the screen: " + (e.message || e), "bad"); }
+  }
+  /* make a border scene: fills maps slot id -> a source or scene name to show in that window */
+  async function build(name, id, fills = {}) {
+    const t = TEMPLATES.find(x => x.id === id), d = await assetDir();
+    {
       await call("CreateScene", { sceneName: name });
       // the border: one image input per template, reused by every scene made from it, full canvas and locked
       const bname = borderName(t), file = `${d}\\${t.file}`;
@@ -127,13 +164,15 @@
       await call("SetSceneItemLocked", { sceneName: name, sceneItemId: bid, sceneItemLocked: true });
       if (t.board) await ensureBoard(name);
       for (const sl of t.slots.filter(s => s.replay)) await fillReplay(name, sl);
+      // windows in reverse so the first one listed (the game) ends up lowest, under camera windows it might overlap
+      for (const sl of [...t.slots].reverse()) {
+        const src = fills[sl.id]; if (!src || sl.replay) continue;
+        const sid = (await call("CreateSceneItem", { sceneName: name, sourceName: src })).sceneItemId;
+        await placeIn(name, sid, sl);
+        if (!sl.above) await call("SetSceneItemIndex", { sceneName: name, sceneItemId: sid, sceneItemIndex: 0 });
+      }
       await order(name, t);
-      await JS.refreshScenes(); JS.refreshInputs();
-      if (S.studio) JS.pickScene(name);
-      toast(`${name} is ready.${t.slots.some(s => !s.replay) ? " Pick what shows in its window." : " Instant replays now air on it."}`, "ok");
-      const open = t.slots.filter(s => !s.replay);
-      if (open.length) pickSlot(name, open[0], open.slice(1));
-    } catch (e) { toast("Couldn't make the screen: " + (e.message || e), "bad"); }
+    }
   }
   /* the replay template shows JhemsStream's replay clip input in its window and becomes the replay screen */
   async function fillReplay(scene, sl) {
@@ -142,7 +181,7 @@
     let id;
     if ((await inputNames()).has(name)) id = (await call("CreateSceneItem", { sceneName: scene, sourceName: name })).sceneItemId;
     else id = (await call("CreateInput", { sceneName: scene, inputName: name, inputKind: "ffmpeg_source", inputSettings: { is_local_file: true, looping: false, restart_on_activate: true, close_when_inactive: false } })).sceneItemId;
-    await window.Editor.placeItem(scene, id, r);
+    await placeIn(scene, id, sl);
     await call("SetSceneItemIndex", { sceneName: scene, sceneItemId: id, sceneItemIndex: 0 });
     R?.setScene?.(scene);
   }
@@ -240,7 +279,7 @@
     if (old && old.sceneItemId !== id) await call("RemoveSceneItem", { sceneName: scene, sceneItemId: old.sceneItemId });
     if (crop) await call("SetSceneItemTransform", { sceneName: scene, sceneItemId: id, sceneItemTransform: crop });
     if (kind === "web") await call("SetSceneItemTransform", { sceneName: scene, sceneItemId: id, sceneItemTransform: { boundsType: "OBS_BOUNDS_STRETCH", boundsWidth: r.w, boundsHeight: r.h, alignment: 5, positionX: r.x, positionY: r.y } });
-    else await E.placeItem(scene, id, r);
+    else await placeIn(scene, id, slot);
     if (!slot.above) await call("SetSceneItemIndex", { sceneName: scene, sceneItemId: id, sceneItemIndex: 0 });
     if (t) await order(scene, t);
     if (discord) {
@@ -285,5 +324,5 @@
   });
   for (const ev of ["SceneListChanged", "SceneItemCreated", "SceneItemRemoved"]) obs.on(ev, () => { clearTimeout(renderBoardBox.t); renderBoardBox.t = setTimeout(renderBoardBox, 600); });
 
-  window.Borders = { TEMPLATES, create, detect, pickSlot, slotItem, borderScenes, setBoardOpts, get boardOpts() { return boardOpts; }, BOARD };
+  window.Borders = { TEMPLATES, create, build, placeIn, ensureScoreInputs, detect, pickSlot, slotItem, borderScenes, setBoardOpts, get boardOpts() { return boardOpts; }, BOARD };
 })();

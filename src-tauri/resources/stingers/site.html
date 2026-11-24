@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Ready Player SITE screen</title>
+<!-- Ready Player SITE event screens for OBS browser sources (1920x1080, transparent where nothing is drawn).
+     Every word comes from the URL hash, so JhemsStream's "Edit screen text" can change it:
+       kind=bumper     bg=1|2 kicker title sub until=HH:MM (countdown) lines=a|b|c (schedule) a b (VS) game label
+       kind=win        img=win-x.jpg game head team extra label mode=champ|advance
+       kind=standings  bg game title l1..l5 (place names) t1..t5 (teams)
+       kind=plates     n1 n2 r1 r2 (casters' names and roles, over the BG2 casters border)
+     Animations pause while the source is hidden and replay when it goes on air. -->
+<style>
+:root{--purple:#c45cff;--hot:#ff4fd8;--cyan:#5adcff;--gold1:#fff3c4;--gold2:#ffc94d;--gold3:#b8761a;--ink:#0b0316}
+html,body{margin:0;background:transparent;overflow:hidden}
+body.paused *,body.paused *::before,body.paused *::after{animation-play-state:paused!important}
+.stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;font-family:"Bahnschrift","Segoe UI",sans-serif;color:#fff;overflow:hidden}
+.bg{position:absolute;inset:-2%;background-size:cover;background-position:center;animation:drift 40s ease-in-out infinite alternate}
+@keyframes drift{from{transform:scale(1) translate(0,0)}to{transform:scale(1.06) translate(-1%,-1%)}}
+canvas.fx{position:absolute;inset:0;pointer-events:none}
+.sweep{position:absolute;inset:0;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.08) 48%,rgba(255,230,180,.16) 50%,rgba(255,255,255,.08) 52%,transparent 60%);background-size:300% 100%;animation:sweep 7s ease-in-out infinite;mix-blend-mode:screen}
+@keyframes sweep{0%{background-position:150% 0}55%,100%{background-position:-50% 0}}
+.scan{position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.08) 0 2px,transparent 2px 4px);pointer-events:none}
+
+/* text effects */
+.kicker{font-weight:600;font-size:26px;letter-spacing:8px;text-transform:uppercase;color:#e9c8ff;text-shadow:0 0 14px rgba(196,92,255,.9)}
+.title{position:relative;font-weight:800;font-size:150px;line-height:.95;letter-spacing:4px;text-transform:uppercase;white-space:nowrap}
+.title .l{position:relative;background:linear-gradient(180deg,#fff 0%,#f5e6ff 45%,#c88cff 100%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 22px rgba(196,92,255,.85)) drop-shadow(0 6px 0 rgba(20,0,40,.8))}
+.title .r,.title .c{position:absolute;inset:0;opacity:.5;mix-blend-mode:screen}
+.title .r{color:#ff3c8a;transform:translateX(-6px)} .title .c{color:#3cdcff;transform:translateX(6px)}
+.sub{font-weight:600;font-size:40px;letter-spacing:5px;text-transform:uppercase;color:#fff6b0;text-shadow:0 0 16px rgba(255,220,120,.6)}
+.slam{animation:slam .75s cubic-bezier(.2,1.4,.4,1) both}
+@keyframes slam{0%{opacity:0;transform:scale(2.4);filter:blur(12px) brightness(3)}60%{opacity:1;transform:scale(.97);filter:blur(0) brightness(1.6)}100%{transform:none;filter:none}}
+.rise{animation:rise .8s cubic-bezier(.16,1,.3,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:none}}
+.wipe{animation:wipe .9s cubic-bezier(.7,0,.2,1) both}
+@keyframes wipe{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+.glitch{animation:glitch 3.2s steps(1) infinite}
+@keyframes glitch{0%,92%,100%{transform:none}93%{transform:translate(6px,-2px) skewX(-8deg)}95%{transform:translate(-5px,2px)}97%{transform:translate(3px,0) skewX(4deg)}}
+
+/* bumper */
+.center{position:absolute;left:0;right:0;top:150px;bottom:250px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;text-align:center}
+.count{font:700 92px/1 "Bahnschrift",monospace;letter-spacing:6px;color:#fff;text-shadow:0 0 24px rgba(90,220,255,.8);font-variant-numeric:tabular-nums}
+.count small{display:block;font-size:22px;letter-spacing:8px;color:#bfe9ff;margin-bottom:10px}
+.lines{display:flex;flex-direction:column;gap:12px;margin-top:10px}
+.line{display:flex;gap:20px;align-items:center;justify-content:center;padding:12px 34px;background:linear-gradient(90deg,rgba(40,8,72,0),rgba(40,8,72,.85) 15%,rgba(40,8,72,.85) 85%,rgba(40,8,72,0));font-size:32px;letter-spacing:3px;text-transform:uppercase}
+.line b{color:#fff6b0;font-weight:700;min-width:170px;text-align:right}
+.vs{display:flex;align-items:center;gap:40px}
+.team{min-width:560px;padding:26px 40px;font-weight:800;font-size:76px;letter-spacing:3px;text-transform:uppercase;background:linear-gradient(180deg,rgba(64,20,110,.95),rgba(20,4,40,.95));border-top:3px solid var(--purple);border-bottom:3px solid var(--purple);box-shadow:0 0 40px rgba(196,92,255,.45),inset 0 0 40px rgba(196,92,255,.25);white-space:nowrap}
+.team.a{clip-path:polygon(30px 0,100% 0,100% 100%,0 100%,0 30px);border-left:8px solid var(--cyan);animation:inL .9s cubic-bezier(.16,1,.3,1) both .2s}
+.team.b{clip-path:polygon(0 0,100% 0,100% calc(100% - 30px),calc(100% - 30px) 100%,0 100%);border-right:8px solid var(--hot);animation:inR .9s cubic-bezier(.16,1,.3,1) both .2s}
+@keyframes inL{from{opacity:0;transform:translateX(-300px)}to{opacity:1;transform:none}}
+@keyframes inR{from{opacity:0;transform:translateX(300px)}to{opacity:1;transform:none}}
+.vsx{font-weight:900;font-size:120px;color:#fff6b0;text-shadow:0 0 30px rgba(255,200,80,.9),0 0 4px #fff}
+.badge{align-self:center;display:inline-flex;align-items:center;gap:14px;padding:10px 26px;border:2px solid rgba(233,184,255,.8);border-radius:4px;background:rgba(30,6,58,.8);font-weight:700;font-size:26px;letter-spacing:6px;text-transform:uppercase}
+.badge i{width:12px;height:12px;border-radius:50%;background:var(--hot);box-shadow:0 0 12px var(--hot);animation:blink 1.2s steps(1) infinite}
+@keyframes blink{50%{opacity:.2}}
+
+/* win */
+.win .bg{animation:push 26s ease-out both}
+@keyframes push{from{transform:scale(1.12)}to{transform:scale(1.0)}}
+.shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(6,1,14,.92) 0%,rgba(6,1,14,.75) 32%,rgba(6,1,14,0) 58%)}
+.wtxt{position:absolute;left:110px;top:0;bottom:0;width:860px;display:flex;flex-direction:column;justify-content:center;gap:18px}
+.wtxt .badge{align-self:flex-start}
+.head{font-weight:900;font-size:128px;line-height:.9;letter-spacing:2px;text-transform:uppercase;background:linear-gradient(180deg,var(--gold1) 0%,var(--gold2) 45%,var(--gold3) 55%,#ffe08a 100%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 26px rgba(255,190,60,.55)) drop-shadow(0 8px 0 rgba(40,20,0,.85))}
+.head.small{font-size:76px;line-height:1}
+.tname{font-weight:800;font-size:110px;line-height:1;letter-spacing:3px;text-transform:uppercase;white-space:nowrap;color:#fff;text-shadow:0 0 30px rgba(196,92,255,.95),0 0 4px #fff,0 6px 0 rgba(20,0,40,.9)}
+.extra{display:inline-block;align-self:flex-start;margin-top:8px;padding:10px 30px;font-weight:900;font-size:70px;letter-spacing:4px;color:#fff;background:linear-gradient(90deg,#ff2fa3,#c45cff);transform:skewX(-10deg);box-shadow:0 0 50px rgba(255,79,216,.75);animation:pop .7s cubic-bezier(.2,1.6,.4,1) both 1.5s,pulse 1.4s ease-in-out infinite 2.3s}
+.extra span{display:inline-block;transform:skewX(10deg)}
+@keyframes pop{0%{opacity:0;transform:skewX(-10deg) scale(3) rotate(-6deg)}100%{opacity:1;transform:skewX(-10deg) scale(1)}}
+@keyframes pulse{50%{box-shadow:0 0 90px rgba(255,79,216,1);filter:brightness(1.25)}}
+.wfoot{font-size:24px;letter-spacing:6px;text-transform:uppercase;color:#d9c2ff}
+.flash{position:absolute;inset:0;background:#fff;opacity:0;animation:flash .9s ease-out .35s}
+@keyframes flash{0%{opacity:.85}100%{opacity:0}}
+.shake{animation:shake .5s ease-out .4s}
+@keyframes shake{0%,100%{transform:none}20%{transform:translate(-10px,6px)}40%{transform:translate(8px,-6px)}60%{transform:translate(-5px,3px)}80%{transform:translate(3px,-2px)}}
+
+/* standings */
+.board{position:absolute;left:260px;right:260px;top:200px;display:flex;flex-direction:column;gap:14px}
+.row{display:grid;grid-template-columns:330px 1fr;align-items:center;height:92px;background:linear-gradient(90deg,rgba(40,8,72,.92),rgba(20,4,40,.85));border-left:6px solid var(--purple);box-shadow:0 0 24px rgba(0,0,0,.5);opacity:0;animation:rowin .8s cubic-bezier(.16,1,.3,1) both}
+@keyframes rowin{from{opacity:0;transform:translateX(-80px)}to{opacity:1;transform:none}}
+.row .p{padding-left:28px;font-weight:700;font-size:28px;letter-spacing:4px;color:#e2c8ff;text-transform:uppercase}
+.row .t{font-weight:800;font-size:54px;letter-spacing:2px;text-transform:uppercase;white-space:nowrap;overflow:hidden}
+.row.first{height:132px;border-left-color:var(--gold2);background:linear-gradient(90deg,rgba(90,58,8,.95),rgba(40,16,4,.9));box-shadow:0 0 50px rgba(255,190,60,.5)}
+.row.first .p{color:#fff0b0}
+.row.first .t{font-size:78px;background:linear-gradient(180deg,var(--gold1),var(--gold2) 55%,var(--gold3));-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* plates */
+.plate{position:absolute;top:700px;height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.plate .n{font-weight:700;font-size:34px;letter-spacing:2px;text-transform:uppercase;line-height:1;white-space:nowrap}
+.plate .r{font-size:15px;letter-spacing:5px;color:#e2c8ff;text-transform:uppercase;margin-top:4px}
+</style>
+<div class="stage" id="stage"></div>
+<script>
+"use strict";
+const P = Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
+const stage = document.getElementById("stage");
+const fit = () => { stage.style.transform = `scale(${innerWidth / 1920},${innerHeight / 1080})`; };
+addEventListener("resize", fit); fit();
+const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+const delay = (e, s) => { e.style.animationDelay = s + "s"; return e; };
+function badge(text, d = 0.1) { const b = delay(el("div", "badge rise"), d); b.append(el("i"), text); return b; }
+function title(text, cls = "") { const t = el("div", "title " + cls); t.append(el("span", "r", text), el("span", "c", text), el("span", "l", text)); return t; }
+/* shrink a single line until it fits its width */
+function shrink(node, maxW) { let s = parseFloat(getComputedStyle(node).fontSize); while (node.scrollWidth > maxW && s > 20) { s -= 2; node.style.fontSize = s + "px"; } }
+let running = true;
+
+/* particles: confetti for champions, embers rising for the rest, dust for bumpers */
+function fx(mode) {
+  const c = el("canvas", "fx"); c.width = 1920; c.height = 1080; stage.append(c);
+  const g = c.getContext("2d"), N = mode === "confetti" ? 220 : 120, rnd = Math.random;
+  const cols = mode === "confetti" ? ["#ffd24d", "#fff3c4", "#c45cff", "#ff4fd8", "#5adcff"] : ["#ffcf7a", "#e8a6ff", "#ffffff"];
+  const ps = Array.from({ length: N }, () => ({ x: rnd() * 1920, y: mode === "confetti" ? -rnd() * 1200 : rnd() * 1080, v: 0.6 + rnd() * 1.8, w: 6 + rnd() * 10, h: 3 + rnd() * 6, a: rnd() * 6.28, s: (rnd() - 0.5) * 0.2, c: cols[Math.floor(rnd() * cols.length)], o: 0.3 + rnd() * 0.7 }));
+  const step = () => {
+    if (running) {
+      g.clearRect(0, 0, 1920, 1080);
+      for (const p of ps) {
+        if (mode === "confetti") { p.y += p.v * 2.4; p.x += Math.sin(p.a) * 1.2; p.a += p.s; if (p.y > 1100) { p.y = -20; p.x = rnd() * 1920; } }
+        else { p.y -= p.v * 0.6; p.x += Math.sin(p.a += 0.01) * 0.3; if (p.y < -10) { p.y = 1090; p.x = rnd() * 1920; } }
+        g.save(); g.translate(p.x, p.y); g.globalAlpha = p.o;
+        if (mode === "confetti") { g.rotate(p.a); g.fillStyle = p.c; g.fillRect(-p.w / 2, -p.h / 2, p.w, p.h * Math.abs(Math.cos(p.a * 2))); }
+        else { g.fillStyle = p.c; g.shadowColor = p.c; g.shadowBlur = 10; g.beginPath(); g.arc(0, 0, p.h * 0.35, 0, 6.28); g.fill(); }
+        g.restore();
+      }
+    }
+    requestAnimationFrame(step);
+  };
+  step();
+}
+
+const kind = P.kind || "bumper";
+if (kind === "bumper") {
+  stage.append(Object.assign(el("div", "bg"), { style: `background-image:url(bg-site${P.bg === "2" ? 2 : 1}.jpg)` }));
+  fx("embers"); stage.append(el("div", "sweep"), el("div", "scan"));
+  const c = el("div", "center"); stage.append(c);
+  if (P.game || P.kicker) c.append(badge(P.game || P.kicker));
+  if (P.a && P.b) {
+    if (P.label) c.append(delay(el("div", "kicker rise", P.label), 0.3));
+    const vs = el("div", "vs"); const ta = el("div", "team a", P.a), tb = el("div", "team b", P.b);
+    vs.append(ta, delay(el("div", "vsx slam", "VS"), 0.7), tb); c.append(vs);
+    requestAnimationFrame(() => { shrink(ta, 700); shrink(tb, 700); });
+  } else if (P.title) {
+    const t = title(P.title, "slam glitch"); c.append(t); requestAnimationFrame(() => shrink(t, 1700));
+  }
+  if (P.sub) c.append(delay(el("div", "sub rise", P.sub), 0.9));
+  if (P.until) {
+    const box = delay(el("div", "count rise"), 1.1); c.append(box);
+    const tick = () => {
+      const [hh, mm] = P.until.split(":").map(Number), now = new Date(), t = new Date(now); t.setHours(hh, mm || 0, 0, 0);
+      const left = Math.max(0, Math.round((t - now) / 1000));
+      const p2 = n => String(n).padStart(2, "0"), hh2 = Math.floor(left / 3600);
+      box.innerHTML = left ? `<small>STARTS IN</small>${hh2 ? hh2 + ":" : ""}${p2(Math.floor(left / 60) % 60)}:${p2(left % 60)}` : "<small>GOING LIVE</small>ANY MOMENT";
+    };
+    tick(); setInterval(tick, 1000);
+  }
+  if (P.lines) {
+    const ls = el("div", "lines"); c.append(ls);
+    P.lines.split("|").filter(Boolean).forEach((s, i) => { const [a, b] = s.split("~"); const r = delay(el("div", "line rise"), 1.1 + i * 0.18); if (b) r.append(el("b", "", a), el("span", "", b)); else r.append(el("span", "", a)); ls.append(r); });
+  }
+} else if (kind === "win") {
+  stage.classList.add("win");
+  stage.append(Object.assign(el("div", "bg"), { style: `background-image:url(${P.img || "win-gxt.jpg"})` }), el("div", "shade"));
+  fx(P.mode === "advance" ? "embers" : "confetti"); stage.append(el("div", "sweep"));
+  const w = el("div", "wtxt shake"); stage.append(w);
+  if (P.game) w.append(badge(P.game));
+  const head = el("div", `head slam${(P.head || "").length > 12 ? " small" : ""}`, P.head || (P.mode === "advance" ? "ADVANCES" : "CHAMPIONS")); w.append(delay(head, 0.3));
+  const tn = delay(el("div", "tname wipe", P.team || "TEAM"), 0.9); w.append(tn); requestAnimationFrame(() => shrink(tn, 860));
+  if (P.extra) { const x = el("div", "extra"); x.append(el("span", "", P.extra)); w.append(x); }
+  if (P.label) w.append(delay(el("div", "wfoot rise", P.label), 1.9));
+  stage.append(el("div", "flash"), el("div", "scan"));
+} else if (kind === "standings") {
+  stage.append(Object.assign(el("div", "bg"), { style: `background-image:url(bg-site${P.bg === "2" ? 2 : 1}.jpg)` }));
+  fx("embers"); stage.append(el("div", "sweep"));
+  const top = el("div", "center"); top.style.cssText = "top:40px;bottom:auto;gap:12px";
+  if (P.game) top.append(badge(P.game));
+  const t = title(P.title || "FINAL STANDINGS", "slam"); t.style.fontSize = "84px"; top.append(t); stage.append(top);
+  const b = el("div", "board"); stage.append(b);
+  const rows = [1, 2, 3, 4, 5].map(i => [P["l" + i], P["t" + i]]).filter(([l]) => l);
+  b.style.top = rows.length > 3 ? "250px" : "320px";
+  // revealed from the last place up, so the champion lands last
+  rows.forEach(([l, t2], i) => { const r = el("div", `row${i === 0 ? " first" : ""}`); r.append(el("div", "p", l), el("div", "t", t2 || "TBA")); r.style.animationDelay = (0.9 + (rows.length - 1 - i) * 0.7) + "s"; b.append(r); });
+} else if (kind === "plates") {
+  [[528, P.n1, P.r1], [1392, P.n2, P.r2]].forEach(([x, n, r]) => { if (!n) return; const p = el("div", "plate rise"); p.style.left = (x - 356) + "px"; p.style.width = "712px"; p.append(el("div", "n", n), el("div", "r", r || "SHOUTCASTER")); stage.append(p); });
+}
+
+/* OBS: pause when hidden, replay the entrance each time it goes on air */
+function replayAll() { for (const n of stage.querySelectorAll("*")) { const a = n.style.animation; n.style.animation = "none"; void n.offsetWidth; n.style.animation = a; } }
+addEventListener("obsSourceVisibleChanged", e => { running = !!e.detail?.visible; document.body.classList.toggle("paused", !running); });
+addEventListener("obsSourceActiveChanged", e => { if (e.detail?.active) replayAll(); });
+</script>
+</html>
