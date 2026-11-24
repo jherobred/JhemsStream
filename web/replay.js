@@ -3,6 +3,7 @@
    Preview so the crew can watch it first, air it on request, then go back to the scene that was live. Works from any connected JhemsStream; the clip lives on the OBS PC. */
 (() => {
   const { h, $, store, S, call, toast, obs } = window.JS;
+  const JS = window.JS;
   const T = window.__TAURI__;
   const PLAIN = "Instant Replay", INPUT = "JS Replay", BAR = "JS Replay Bar", LABEL = "JS Replay Label";
   const R = {
@@ -27,6 +28,9 @@
   /* OBS only builds the replay buffer output when it (re)loads the profile, so after changing RecRB/RecRBTime we
      switch to a throwaway profile and back. ponytail: this can't run while streaming or recording; turn the buffer on first. */
   async function reloadOutputs() {
+    // quiet every JhemsStream's stats polling first, and give polls already in flight (2 s apart) time to finish
+    await JS.quiet(9000);
+    await wait(2500);
     const cur = (await call("GetProfileList")).currentProfileName, tmp = "_JhemsStream reload";
     await call("CreateProfile", { profileName: tmp });
     await wait(600);
@@ -153,7 +157,8 @@
      cover time plus a margin. Stingers cover at their cut point; OBS transitions need their duration. */
   const backLeadMs = () => {
     const t = window.Transitions, sid = t?.isCustom?.() && t.selected, st = sid && t.list.find(x => x.id === sid);
-    return (st ? (st.cutPointMs ?? 600) : (S.transFixed ? 700 : S.transDur || 300)) + 250;
+    // margin: OBS reports a 300 ms Fade ending ~1 s after it starts, so leave room rather than risk a blank last frame
+    return (st ? (st.cutPointMs ?? 600) + 400 : (S.transFixed ? 700 : S.transDur || 300) + 700);
   };
   function watchEnd() {
     clearTimeout(R.fallback);

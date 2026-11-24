@@ -175,9 +175,10 @@
         await call("SetCurrentSceneTransition", { transitionName: cutT });
         // ponytail: fixed lead for OBS applying the switch on its next frame; tune if cuts land late on slower PCs
         await sleep(Math.max(0, cutAt - CUT_LEAD_MS - (performance.now() - base)));
+        const back = JS.restoreTransition(prevTrans);
         if (S.studio) await call("TriggerStudioModeTransition");
         else await call("SetCurrentProgramScene", { sceneName: target });
-        setTimeout(() => call("SetCurrentSceneTransition", { transitionName: prevTrans }).catch(() => {}), 150);
+        back.catch(() => {});
       }
       // clean up in the background so the operator gets control back right after the cut
       (async () => {
@@ -444,9 +445,12 @@
   }
   async function addToObs() {
     if (S.streaming || S.recording) return toast("Stop streaming and recording first. OBS has to restart to load new transitions.", "warn");
-    if (!confirm(`Add ${missing.length} JhemsStream transitions to OBS (including the SITE Code Rain stingers)? OBS closes and reopens, and JhemsStream reconnects by itself.`)) return;
+    if (!confirm(`Add ${missing.length} JhemsStream transitions to OBS (including the SITE Code Rain stingers)? OBS closes and reopens, and JhemsStream reconnects by itself. The replay buffer and virtual camera are stopped first.`)) return;
     try {
-      const n = await T.core.invoke("obs_add_transitions");
+      // OBS asks "outputs still active, exit?" for these and won't close until someone answers
+      await obs.call("StopReplayBuffer").catch(() => {});
+      await obs.call("StopVirtualCam").catch(() => {});
+      const n = await (window.Setup?.hold ? Setup.hold(() => T.core.invoke("obs_add_transitions")) : T.core.invoke("obs_add_transitions"));
       toast(n ? `Added ${n} transitions to OBS. It is reopening.` : "OBS already has every JhemsStream transition.", "ok");
       dlg?.close();
     } catch (e) { toast("Couldn't add the transitions: " + e, "bad"); }

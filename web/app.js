@@ -142,6 +142,7 @@ function renderScenes() {
     tile.classList.toggle("is-program", isP); tile.classList.toggle("is-preview", isV);
     tile.querySelector(".tag").textContent = isP ? "On air" : isV ? "Next" : "";
   }
+  window.Studio?.decorateTiles?.();
   // keep the on-air scene visible in the Scenes dock
   tileEls.get(S.program)?.scrollIntoView({ block: "nearest" });
   $("#nameProgram").textContent = S.program || "None";
@@ -159,12 +160,32 @@ async function take() {
   if (customTrans()) return Transitions.toScene(S.preview);
   await call("TriggerStudioModeTransition");
 }
+/* OBS ignores a transition change while a transition is still running (a studio-mode Cut reports ~1 s), so the
+   one that was in use is put back after OBS says the switch ended, and checked until it sticks. */
+function restoreTransition(name) {
+  return new Promise(res => {
+    let done = false;
+    const go = async () => {
+      if (done) return; done = true; obs.off("SceneTransitionEnded", go); clearTimeout(t);
+      for (let i = 0; i < 8; i++) {
+        await obs.call("SetCurrentSceneTransition", { transitionName: name }).catch(() => {});
+        await new Promise(r => setTimeout(r, 120));
+        if ((await obs.call("GetCurrentSceneTransition").catch(() => ({}))).transitionName === name) break;
+        await new Promise(r => setTimeout(r, 250));
+      }
+      res();
+    };
+    const t = setTimeout(go, 2500);
+    obs.on("SceneTransitionEnded", go);
+  });
+}
 async function cut() {
   if (!S.studio) return;
   const cur = (await call("GetCurrentSceneTransition")).transitionName;
   await call("SetCurrentSceneTransition", { transitionName: "Cut" });
+  const back = restoreTransition(cur);
   await call("TriggerStudioModeTransition");
-  setTimeout(() => call("SetCurrentSceneTransition", { transitionName: cur }).catch(() => {}), 150);
+  await back;
 }
 async function renameScene(name) {
   const n = prompt(`Rename "${name}" to:`, name);
@@ -176,8 +197,10 @@ async function deleteScene(name) {
 }
 
 /* live thumbnails: decode first, then swap, so frames never blank */
+/* a request that was in flight when OBS went away never settles; the frame loops give up on it instead of freezing */
+const timed = (p, ms = 3000) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("OBS took too long")), ms))]);
 async function shot(name, w) {
-  return (await obs.call("GetSourceScreenshot", { sourceName: name, imageFormat: "jpg", imageWidth: w, imageCompressionQuality: 62 })).imageData;
+  return (await timed(obs.call("GetSourceScreenshot", { sourceName: name, imageFormat: "jpg", imageWidth: w, imageCompressionQuality: 62 }))).imageData;
 }
 async function swapImg(img, src) { const t = new Image(); t.src = src; try { await t.decode(); } catch {} img.src = src; }
 let gridBusy = false, gridIdx = 0;
@@ -191,7 +214,7 @@ async function monitorLoop(img, name) {
     if (!S.connected || document.hidden || !n || !img.offsetWidth) { await sleep(250); continue; }
     const t0 = performance.now();
     const w = Math.round(Math.min(960, Math.max(320, img.offsetWidth * devicePixelRatio)) / 16) * 16;
-    try { swapImg(img, (await obs.call("GetSourceScreenshot", { sourceName: n, imageFormat: "jpg", imageWidth: w, imageCompressionQuality: 55 })).imageData); }
+    try { swapImg(img, (await timed(obs.call("GetSourceScreenshot", { sourceName: n, imageFormat: "jpg", imageWidth: w, imageCompressionQuality: 55 }))).imageData); }
     catch { await sleep(400); }
     await sleep(Math.max(0, 33 - (performance.now() - t0)));
   }
@@ -307,8 +330,16 @@ $("#btnLive").addEventListener("click", async () => {
 $("#btnRec").addEventListener("click", () => call(S.recording ? "StopRecord" : "StartRecord"));
 let lastBytes = 0, lastT = 0;
 function stat(id, label, val, level) { const el = $(id); el.className = level || ""; el.textContent = label + " "; el.append(h("b", {}, val)); }
+/* OBS 33 crashes in GetStats (GetCurrentOutputPath) when it runs while a profile switch rebuilds the outputs.
+   Before such a switch JhemsStream goes quiet here and tells every other JhemsStream on this OBS to do the same. */
+S.quietUntil = 0;
+async function quiet(ms) {
+  S.quietUntil = Date.now() + ms;
+  await obs.call("BroadcastCustomEvent", { eventData: { jhemsstream: "quiet", ms } }).catch(() => {});
+}
+obs.on("CustomEvent", d => { if (d?.jhemsstream === "quiet") S.quietUntil = Date.now() + (+d.ms || 6000); });
 setInterval(async () => {
-  if (!S.connected) return;
+  if (!S.connected || Date.now() < S.quietUntil) return;
   try {
     const st = await obs.call("GetStats");
     stat("#sFps", "FPS", st.activeFps.toFixed(0), st.activeFps < 25 ? "bad" : "");
@@ -368,7 +399,9 @@ const fmtDb = d => (d <= -60 ? "−∞" : (d > 0 ? "+" : "") + d.toFixed(1)) + "
 function renderMixer() {
   const box = $("#mixer"); box.textContent = "";
   if (!S.audio.length) box.append(h("div", { class: "empty" }, "No audio sources. In OBS open Settings → Audio and pick your Desktop Audio and Mic."));
+  const hidden = new Set(store.get("mixHidden", []));
   for (const a of S.audio) {
+    if (hidden.has(a.name)) continue;
     const fill = h("i", { class: "fill" }), peak = h("i", { class: "peak" }); meterEls[a.name] = { fill, peak };
     const range = h("input", { type: "range", min: -60, max: 6, step: 0.5, value: Math.max(-60, a.db), "aria-label": `${a.name} volume` });
     const dbLbl = h("span", { class: "db" }, fmtDb(a.db));
@@ -693,11 +726,11 @@ $("#btnCut").addEventListener("click", cut);
 /* ---------- guided tour: spotlights each part of the console in turn ---------- */
 const HELP = [
   [null, "Welcome to JhemsStream", `<p>OBS makes the video and sends it to Facebook. JhemsStream puts the crew's controls in one window.</p><p>This tour points at each part. Use the arrow keys or the buttons. Esc closes it, and <b>Help</b> in the top bar reopens it.</p>`],
-  [".dock-scenes", "1. Pick a scene", `<p>Each row is something viewers can see. Click one to load it into <b>Preview</b>. Keys <b>1</b> to <b>9</b> do the same.</p><p><b>Starter scenes</b> makes Starting Soon, Main Game, Casters, Break and Ending. <b>SITE look</b> dresses them in Ready Player SITE graphics.</p>`],
-  [".mon-preview", "2. Check Preview", `<p>Green means <b>next</b>. Nothing here is on stream yet, so you can fix it safely.</p>`],
+  [".dock-scenes", "1. Pick a scene", `<p>Each row is something viewers can see. Click one to load it into <b>Preview</b>. Keys <b>1</b> to <b>9</b> do the same.</p><p><b>Main</b>, <b>Win</b>, <b>Next A</b> and <b>Next B</b> at the top jump to the scene you set for each (right-click to set). Right-click a scene for more. <b>Add scene</b> has the SITE border templates.</p>`],
+  [".mon-preview", "2. Check Preview", `<p>Green means <b>next</b>. Nothing here is on stream yet, so you can fix it safely.</p><p>Click a source on it to select it, drag to move, drag a red handle to resize, Alt and a handle to crop. Right-click for layers, fit and lock. <b>Multiview</b> (M) shows every scene at once.</p>`],
   [".takecol", "3. Transition", `<p>Press <b>Transition</b> or <b>Space</b> to send Preview to air. <b>C</b> cuts instantly. Drag the T-bar to do it by hand.</p><p>Pick the effect here. The <b>Code Rain</b> stingers are the SITE ones.</p>`],
   [".mon-program", "4. Program is live", `<p>Red means <b>on stream</b>. This is exactly what Facebook viewers see.</p>`],
-  [".dock-mixer", "Audio", `<p>Mic and game levels. Keep the meters in the green and yellow. <b>Clean up mics</b> removes hiss, <b>Limit loud spikes</b> stops shouting from clipping.</p>`],
+  [".dock-mixer", "Audio", `<p>Mic and game levels. Keep the meters in the green and yellow. <b>Mute all</b>, <b>Fade down</b> and <b>Fade up</b> at the top act on the whole mix. Right-click a source for more.</p>`],
   [".dock-music", "Music", `<p>Paste YouTube or Spotify links or add a folder. Songs crossfade, fade down on gameplay scenes and duck when casters talk. Set how loud each scene is under <b>Music level per scene</b>.</p>`],
   ["#scoreBox", "Scores", `<p>Type team names and press + or &minus;. The scoreboard on stream updates right away.</p>`],
   ["#replayBox", "Instant replay", `<p>Turn on <b>Buffer</b> before going live. Press <b>Instant replay</b> or <b>R</b>: the clip loads into <b>Preview</b> so you can watch it first. Press <b>Air replay</b> (or R again) to show it. It returns to the game when it ends.</p>`],
@@ -749,7 +782,13 @@ $("#dlgHelp").addEventListener("close", () => store.set("helpSeen", true));
 $$("[data-help]").forEach(b => b.addEventListener("click", openHelp));
 
 /* ---------- shared API for editor.js and setup.js ---------- */
-window.JS = { obs, S, call, h, $, $$, store, log, toast, icon, pickScene, refreshScenes, refreshInputs, connect, onReady: f => readyFns.push(f), openExt, runTransitionProgress: ms => runBunting(ms) };
+/* settings the whole crew shares: stored in OBS's profile through obs-websocket, so every laptop sees the same */
+const shared = {
+  async get(k, d) { try { const v = (await obs.call("GetPersistentData", { realm: "OBS_WEBSOCKET_DATA_REALM_PROFILE", slotName: "jhemsstream." + k })).slotValue; return v ?? d; } catch { return d; } },
+  set(k, v) { return obs.call("SetPersistentData", { realm: "OBS_WEBSOCKET_DATA_REALM_PROFILE", slotName: "jhemsstream." + k, slotValue: v }).catch(() => {}); },
+};
+window.JS = { obs, S, call, h, $, $$, store, log, toast, icon, pickScene, refreshScenes, refreshInputs, connect, onReady: f => readyFns.push(f), openExt, runTransitionProgress: ms => runBunting(ms),
+  quiet, restoreTransition, timed, take, cut, renameScene, deleteScene, setStudioMode, fadeMute, toggleMonitor, cleanMic, ensureFilter, renderMixer, renderScenes, tileEls, shared, fmtDb, MIC_KINDS, selectTab };
 
 /* ---------- window buttons in our own title bar (desktop app has no Windows title bar) ---------- */
 if (TAURI?.window) {

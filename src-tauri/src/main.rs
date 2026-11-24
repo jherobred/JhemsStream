@@ -256,7 +256,17 @@ async fn obs_setup(app: tauri::AppHandle) -> Result<ObsInfo, String> {
     }
     std::fs::create_dir_all(p.parent().unwrap()).map_err(|e| e.to_string())?;
     std::fs::write(&p, serde_json::to_string_pretty(&cfg).unwrap()).map_err(|e| e.to_string())?;
-    let added = add_transitions(stingers_ready(&app).ok().as_deref());
+    let dir = stingers_ready(&app).ok();
+    let mut added = add_transitions(dir.as_deref());
+    // same guard as obs_add_transitions: an OBS reopened meanwhile would save over the edit
+    for _ in 0..2 {
+        std::thread::sleep(Duration::from_millis(600));
+        if !obs_running() {
+            break;
+        }
+        close_obs()?;
+        added = add_transitions(dir.as_deref());
+    }
     obs_launch().await?;
     added.map_err(|e| format!("OBS is set up, but its transitions couldn't be added: {e}"))?;
     Ok(obs_info().await)
@@ -269,12 +279,21 @@ async fn obs_setup(app: tauri::AppHandle) -> Result<ObsInfo, String> {
 async fn obs_add_transitions(app: tauri::AppHandle) -> Result<usize, String> {
     let dir = stingers_ready(&app)?;
     let was_running = obs_running();
-    close_obs()?;
-    let added = add_transitions(Some(&dir));
-    if was_running {
+    let mut added = 0;
+    // another JhemsStream (or the user) may reopen OBS while it is closed; an OBS that loaded the old file would
+    // save over the edit when it next closes, so close it again and re-apply until the edit lands with OBS shut
+    for _ in 0..3 {
+        close_obs()?;
+        added += add_transitions(Some(&dir))?;
+        std::thread::sleep(Duration::from_millis(600));
+        if !obs_running() {
+            break;
+        }
+    }
+    if was_running && !obs_running() {
         obs_launch().await?;
     }
-    added
+    Ok(added)
 }
 
 #[tauri::command]

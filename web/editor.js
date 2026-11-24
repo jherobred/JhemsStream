@@ -134,8 +134,13 @@ if (typeof window !== "undefined") (() => {
     const names = new Set((await JS.obs.call("GetInputList")).inputs.map(i => i.inputName));
     let n = base, i = 2; while (names.has(n)) n = `${base} ${i++}`; return n;
   }
+  /* size: "full", "corner", or a window {x, y, w, h} in canvas pixels (a SITE border slot: fit inside it, keep layer order) */
   async function placeItem(scene, id, size) {
     const { w, h: H } = JS.S.canvas;
+    if (size && typeof size === "object") {
+      return call("SetSceneItemTransform", { sceneName: scene, sceneItemId: id, sceneItemTransform: {
+        boundsType: "OBS_BOUNDS_SCALE_INNER", boundsWidth: size.w, boundsHeight: size.h, boundsAlignment: 0, alignment: 5, positionX: size.x, positionY: size.y } });
+    }
     const t = size === "corner"
       ? { boundsType: "OBS_BOUNDS_SCALE_INNER", boundsWidth: w * 0.28, boundsHeight: H * 0.28, boundsAlignment: 0, alignment: 5, positionX: w * 0.7, positionY: H * 0.7 }
       : { boundsType: "OBS_BOUNDS_SCALE_INNER", boundsWidth: w, boundsHeight: H, boundsAlignment: 0, alignment: 5, positionX: 0, positionY: 0 };
@@ -159,16 +164,17 @@ if (typeof window !== "undefined") (() => {
     const sx = t.sourceWidth / cv.width, sy = t.sourceHeight / cv.height;
     return { ok: true, t, sourceName, crop: { cropLeft: Math.round(crop.left * sx), cropRight: Math.round(crop.right * sx), cropTop: Math.round(crop.top * sy), cropBottom: Math.round(crop.bottom * sy) } };
   }
-  async function applyFit(scene, id, crop) {
+  /* inside a border window (rect) only the crop changes; the item stays in its window and layer */
+  async function applyFit(scene, id, crop, rect) {
     await call("SetSceneItemTransform", { sceneName: scene, sceneItemId: id, sceneItemTransform: crop });
-    await placeItem(scene, id, "full");
+    await placeItem(scene, id, rect || "full");
   }
-  /** Crop a Discord window capture down to the stream video and fill the screen with it. */
-  async function autoFitDiscord(scene, id, { quiet } = {}) {
+  /** Crop a Discord window capture down to the stream video and fill the screen (or its border window) with it. */
+  async function autoFitDiscord(scene, id, { quiet, rect } = {}) {
     try {
       const r = await scanDiscord(scene, id);
       if (!r.ok) { if (!quiet) JS.toast(r.reason, "warn"); return r; }
-      await applyFit(scene, id, r.crop);
+      await applyFit(scene, id, r.crop, rect);
       if (!quiet) JS.toast("Fitted to the stream video. Discord's chat and buttons are cropped out.", "ok");
       return r;
     } catch (e) { if (!quiet) JS.toast("Couldn't fit the Discord window: " + e.message, "bad"); return { ok: false, reason: e.message }; }
@@ -188,7 +194,7 @@ if (typeof window !== "undefined") (() => {
         const prev = lastScan.get(key); lastScan.set(key, r.crop);
         const agree = prev && Object.keys(r.crop).every(k => Math.abs(prev[k] - r.crop[k]) <= 4);
         const changed = Object.keys(r.crop).some(k => Math.abs((r.t[k] || 0) - r.crop[k]) > 2);
-        if (agree && changed) await applyFit(v.scene, v.id, r.crop);
+        if (agree && changed) await applyFit(v.scene, v.id, r.crop, v.rect);
       } catch { lastScan.delete(key); }
     }
   }, 15000);
@@ -240,7 +246,12 @@ if (typeof window !== "undefined") (() => {
       } catch (e) { itemSel.textContent = ""; itemSel.append(h("option", { value: "" }, "Couldn't list: " + e.message)); }
     }
 
-    body.append(h("div", { class: "field" }, h("label", { for: "edTarget" }, "Put it in"), sel), nameWrap,
+    const tpl = window.Borders?.TEMPLATES?.length ? h("div", { class: "tpl-row" },
+      h("p", { class: "muted" }, "Start from a template"),
+      h("div", { class: "tpl-grid" }, ...Borders.TEMPLATES.map(t => h("button", { type: "button", class: "tpl", onclick: () => { dlg.close(); Borders.create(t.id); } },
+        h("img", { src: t.thumb, alt: "", width: 320, height: 180, loading: "lazy" }), h("b", {}, t.label), h("span", { class: "muted small" }, t.desc)))),
+      h("p", { class: "muted" }, "Or build one yourself")) : null;
+    body.append(tpl, h("div", { class: "field" }, h("label", { for: "edTarget" }, "Put it in"), sel), nameWrap,
       h("p", { class: "muted" }, "What do you want to show?"), h("div", { class: "types" }, typeBtns),
       tip, itemWrap, textWrap, soundWrap, h("div", { class: "field" }, h("label", { for: "edSize" }, "Size"), size), err);
     const ok = h("button", { type: "button", class: "btn primary", onclick: add }, "Add");
@@ -509,5 +520,5 @@ if (typeof window !== "undefined") (() => {
     render();
   }
 
-  window.Editor = { openNew, openEdit, listItems, placeItem, autoFitDiscord };
+  window.Editor = { openNew, openEdit, listItems, placeItem, autoFitDiscord, uniqueInputName, TYPES, fitKey };
 })();

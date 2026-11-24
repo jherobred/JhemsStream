@@ -158,7 +158,7 @@ window.Setup = (() => {
     if (running && !skipConfirm && !confirm("JhemsStream will close OBS, turn on its remote control, and reopen it. Continue?")) return;
     set("ws", "busy"); show(running ? "Closing OBS and turning on remote control…" : "Turning on remote control…");
     try {
-      const info = await invoke("obs_setup");
+      const info = await hold(() => invoke("obs_setup"));
       set("ws", "done"); set("open", "busy");
       J().toast("OBS is set up. Added Swipe, Slide and Luma Wipe transitions.", "ok");
       flowRunning = true;
@@ -177,7 +177,15 @@ window.Setup = (() => {
     render(); auto();
   }
 
+  /* while JhemsStream itself has OBS closed to edit its files, a reconnect must not reopen it (OBS would load the old
+     file and later save over the edit); the edit reopens OBS itself */
+  let holding = 0;
+  async function hold(task) {
+    holding++;
+    try { return await task(); } finally { holding--; setTimeout(() => { if (!J().S.connected && !flowRunning) auto(); }, 1500); }
+  }
   async function onDisconnect() {
+    if (holding) { J().toast("OBS is restarting for setup. JhemsStream reconnects when it's back.", "warn"); for (const k of ["open", "connected"]) set(k, "todo"); render(); return; }
     if (!desktop || mode === "manual" || !isLocal(lastTarget)) { render(); return; }
     J().toast("Lost OBS. Reconnecting…", "warn");
     for (const k of ["open", "connected"]) set(k, "todo");
@@ -250,5 +258,5 @@ window.Setup = (() => {
     }
   }
 
-  return { start, onDisconnect, open, checkUpdate, get desktop() { return desktop; } };
+  return { start, onDisconnect, open, checkUpdate, hold, get desktop() { return desktop; } };
 })();

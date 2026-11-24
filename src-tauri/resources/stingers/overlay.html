@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <title>JhemsStream overlay</title>
 <!-- Ready Player SITE on-stream graphics, loaded by an OBS browser source.
-     URL hash: kind=scoreboard|title, src=<text input>, t=<fallback text>, y=<0..1>, port, pw.
+     URL hash: kind=scoreboard|bar|title, score=0 hides scores (bar), label=<small text under VS> (bar), src=<text input>, t=<fallback text>, y=<0..1>, port, pw.
      The words come from OBS text inputs (the ones the Scores tab edits) over obs-websocket. -->
 <style>
 :root{--yellow:#f6ea4a;--yellow-hot:#fff7a0;--green:#2bff6a;--label:#1d7a2f;--label-dark:#0f4a1b;--ink:#05200d;--crt:#04120a}
@@ -35,6 +35,25 @@ html,body{margin:0;background:transparent;overflow:hidden}
 @keyframes spin{to{transform:rotate(360deg)}}
 .brand{font-size:19px;letter-spacing:2px;color:var(--yellow);line-height:1}
 .brand i{font-style:normal;color:var(--green)}
+
+/* ---------- bar: the SITE border's top-bar scoreboard (purple neon, fits the 84px bar) ---------- */
+.bar{position:absolute;top:11px;left:0;right:0;margin:0 auto;width:max-content;height:62px;display:flex;align-items:stretch;font-family:"Bahnschrift","Bahnschrift SemiBold","Segoe UI",sans-serif;filter:drop-shadow(0 6px 14px rgba(0,0,0,.6))}
+.bar>*{flex:none}
+.plate{position:relative;width:300px;display:flex;align-items:center;padding:0 30px;box-sizing:border-box;color:#fff;
+  background:linear-gradient(180deg,rgba(64,20,110,.96),rgba(22,6,44,.96));border-top:2px solid rgba(196,92,255,.9);border-bottom:2px solid rgba(196,92,255,.9)}
+.plate.a{justify-content:flex-end;clip-path:polygon(18px 0,100% 0,100% 100%,0 100%);border-left:0}
+.plate.b{justify-content:flex-start;clip-path:polygon(0 0,100% 0,calc(100% - 18px) 100%,0 100%)}
+.plate::before{content:"";position:absolute;top:0;bottom:0;width:6px}
+.plate.a::before{right:0;background:#5adcff;box-shadow:0 0 14px #5adcff}
+.plate.b::before{left:0;background:#ff78e6;box-shadow:0 0 14px #ff78e6}
+.pname{font-weight:700;font-size:34px;line-height:1;letter-spacing:1.5px;text-transform:uppercase;white-space:nowrap;text-shadow:0 0 10px rgba(196,92,255,.8)}
+.pscore{width:70px;display:grid;place-items:center;background:radial-gradient(ellipse at 50% 40%,#2a0b4a,#0b0316 80%);border-top:2px solid rgba(196,92,255,.9);border-bottom:2px solid rgba(196,92,255,.9);box-shadow:inset 0 0 18px rgba(196,92,255,.45)}
+.pscore b{font:700 46px/1 "Bahnschrift",sans-serif;color:#fff6b0;text-shadow:0 0 12px rgba(255,240,150,.9),0 0 2px #fff}
+.pscore.bump b{animation:bump .7s cubic-bezier(.2,.9,.3,1.2)}
+.pmid{min-width:96px;padding:0 14px;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:linear-gradient(180deg,#c45cff,#7a1fd0);color:#fff;border-top:2px solid #e9b8ff;border-bottom:2px solid #e9b8ff}
+.pmid .vs{font:700 26px/1 "Bahnschrift",sans-serif;letter-spacing:2px;text-shadow:0 1px 0 rgba(0,0,0,.4)}
+.pmid .lbl{font:600 14px/1 "Bahnschrift",sans-serif;letter-spacing:1.5px;text-transform:uppercase;opacity:.95;white-space:nowrap}
+.bar.noscore .pscore{display:none}
 
 /* ---------- title card ---------- */
 .title{position:absolute;left:0;right:0;display:flex;flex-direction:column;align-items:center;transform:translateY(-50%)}
@@ -87,7 +106,27 @@ function shrink(node, maxW, start) {
 }
 function replay(node, cls) { node.classList.remove(cls); void node.offsetWidth; node.classList.add(cls); }
 
-if (P.kind === "scoreboard") {
+if (P.kind === "bar") {
+  const bar = el("div", `bar enter${P.score === "0" ? " noscore" : ""}`);
+  const plate = side => { const t = el("div", `plate ${side}`); const n = el("div", "pname"); t.append(n); return [t, n]; };
+  const score = () => { const s = el("div", "pscore"); const b = el("b"); s.append(b); return [s, b]; };
+  const [ta, na] = plate("a"), [tb, nb] = plate("b"), [sa, va] = score(), [sbx, vb] = score();
+  const mid = el("div", "pmid"); mid.append(el("div", "vs", "VS"));
+  if (P.label) mid.append(el("div", "lbl", P.label));
+  bar.append(ta, sa, mid, sbx, tb);
+  stage.append(bar);
+  const last = {};
+  render = () => {
+    const set = (key, node, box, isScore) => {
+      const v = (texts[SB[key]] ?? (isScore ? "0" : key === "a" ? "TEAM A" : "TEAM B")).trim();
+      if (last[key] === v) return;
+      const had = key in last; last[key] = v; node.textContent = v;
+      if (isScore) { if (had) replay(box, "bump"); }
+      else { shrink(node, 244, 34); if (had) replay(box, "glitch"); }
+    };
+    set("a", na, ta); set("b", nb, tb); set("sa", va, sa, true); set("sb", vb, sbx, true);
+  };
+} else if (P.kind === "scoreboard") {
   const sb = el("div", "sb enter");
   const team = side => { const t = el("div", `team ${side}`); const n = el("div", "tname outline"); t.append(n); return [t, n]; };
   const score = () => { const s = el("div", "score"); const b = el("b"); s.append(b); return [s, b]; };
@@ -139,7 +178,7 @@ if (P.kind === "scoreboard") {
 render();
 
 /* ---------- live words from OBS ---------- */
-const watched = P.kind === "scoreboard" ? Object.values(SB) : [P.src].filter(Boolean);
+const watched = P.kind === "scoreboard" || P.kind === "bar" ? Object.values(SB) : [P.src].filter(Boolean);
 async function connect() {
   const obs = new OBSWebSocket();
   obs.on("InputSettingsChanged", ({ inputName, inputSettings }) => {

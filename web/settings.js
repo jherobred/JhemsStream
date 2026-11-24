@@ -13,6 +13,7 @@
     obs: '<path d="M9 3v4M15 3v4M7 7h10v4a5 5 0 0 1-10 0zM12 16v5"/>',
     quality: '<path d="M4 18h3v-5H4zM10.5 18h3V9h-3zM17 18h3V5h-3z"/>',
     updates: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+    layout: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 10h18M9 10v10"/>',
     help: '<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.5M12 17h.01"/>',
   };
 
@@ -56,17 +57,34 @@
         ctl: () => seg([["light dark", `System (${sysDark() ? "dark" : "light"})`], ["light", "Light"], ["dark", "Dark"]], themeValue(), setTheme, "Theme") },
       { title: "Compact view", desc: "Smaller controls and tighter rows, so more fits on a laptop screen.", badge: "This computer",
         ctl: () => sw(document.body.classList.contains("compact"), setCompact, "Compact view") },
+      { title: "Zoom", desc: "Makes the whole window bigger or smaller. Ctrl and + or −, Ctrl and the mouse wheel, Ctrl 0 to reset.", badge: "This computer",
+        ctl: () => window.Studio ? sel(Studio.ZOOMS.map(z => [z, `${Math.round(z * 100)}%`]), Studio.zoom, v => Studio.setZoom(+v), "Zoom") : null },
+    ] },
+    { id: "layout", label: "Layout", rows: [
+      { title: "Docks", desc: "Drag a dock's title bar to move it, drag its right edge to resize it, right-click a title to hide or show docks.", badge: "This computer",
+        ctl: () => btn("Reset dock layout", () => window.Studio?.resetLayout()) },
+      ...(window.Studio ? Object.entries(Studio.DOCKS).filter(([k]) => Studio.layout.hidden.includes(k)).map(([k, l]) => ({ title: `${l} is hidden`, desc: "Hidden from this window.", ctl: () => btn("Show", () => { Studio.showDock(k); render(); }) })) : []),
+      { title: "Edit sources on the monitor", desc: "Click a source on Preview to select it, drag to move, drag a handle to resize, hold Alt to crop, right-click for more. With Studio Mode off this edits what's on air.", badge: "This computer",
+        ctl: () => window.Studio ? sw(Studio.editOn(), v => Studio.setEditOn(v), "Edit sources on the monitor") : null },
+      { title: "Multiview", desc: "Every scene at once. Click to load one into Preview, double-click to transition. Key M opens and closes it.",
+        ctl: () => btn("Open Multiview", () => { close(); window.Studio?.openMv(); }) },
     ] },
     { id: "switching", label: "Switching", rows: [
       { title: "Studio Mode", desc: "Load a scene into Preview, then send it to Program with Transition. Turn it off to put scenes on air with one click.",
         ctl: () => sw(S.studio, on => { store.set("quick", !on); call("SetStudioModeEnabled", { studioModeEnabled: on }); }, "Studio Mode") },
-      { title: "Keyboard shortcuts", desc: "1 to 9 pick a scene, Space or Enter transitions, C cuts. Shortcuts pause while you type in a field." },
+      { title: "Keyboard shortcuts", desc: "1 to 9 pick a scene, Space or Enter transitions, C cuts, R instant replay, M Multiview. On the monitor: arrows nudge, Delete removes, Ctrl F fits, Ctrl D centers. Shortcuts pause while you type in a field." },
+      { title: "Transition sounds", desc: "Mutes the sound of every JhemsStream stinger, the SITE ones included. Each stinger's own sound setting stays for when you turn this back on.",
+        ctl: () => window.Transitions ? sw(!Transitions.muted, on => Transitions.setMuted(!on), "Transition sounds") : null },
+      { title: "Transitions in OBS", desc: "Adds JhemsStream's wipes, slides and stingers (SITE ones included) to OBS itself, so OBS's own Transition button and hotkeys can use them. OBS restarts.", director: true,
+        ctl: () => T ? btn("Add to OBS", async () => { if (!window.Transitions) return; const m = await Transitions.checkObs(); if (!m.length) return toast("OBS already has every JhemsStream transition."); close(); Transitions.addToObs(); }) : null },
     ] },
     { id: "audio", label: "Audio and music", rows: [
       { title: "Crossfade length", desc: "How long two songs overlap when one ends or someone presses Next.",
         ctl: () => sel([3, 4, 6, 8, 10, 12].map(s => [s, `${s} seconds`]), Music.st.xfade, v => { Music.st.xfade = +v; store.set("xfade", +v); const r = $("#mXfade"); if (r) { r.value = v; $("#mXfTxt").textContent = v + " s"; } }, "Crossfade length") },
       { title: "Duck music under talking", desc: "How quiet the music gets while a caster mic is loud. Pick which mics in the Music dock.",
         ctl: () => sel([[0.15, "15%"], [0.3, "30%"], [0.5, "50%"], [0.7, "70%"]], store.get("duckDepth", 0.3), v => { const r = $("#mDuckDepth"); r.value = v; r.dispatchEvent(new Event("input")); }, "Duck level") },
+      { title: "Whole-mix fade length", desc: "How long Fade down and Fade up in the Audio Mixer take.",
+        ctl: () => sel([1, 2, 3, 5, 8].map(s => [s, `${s} seconds`]), store.get("mixFadeSec", 2), v => store.set("mixFadeSec", +v), "Fade length") },
       { title: "Music folder", desc: store.get("musicDir", "") || (T ? "None chosen yet." : "In a browser, add songs from the Music dock."),
         ctl: () => T ? btn("Choose folder", () => $("#mFolder").click()) : null },
     ] },
@@ -89,7 +107,7 @@
           ctl: () => btn("Set up OBS", async () => {
             if (S.streaming) return toast("Stop streaming before setting up OBS again.", "warn");
             if (!confirm("Close and reopen OBS now?")) return;
-            close(); try { await T.core.invoke("obs_setup"); toast("OBS is restarting with remote control on."); } catch (e) { toast("Setup failed: " + e, "bad"); }
+            close(); await window.JS.obs.call("StopReplayBuffer").catch(() => {}); await window.JS.obs.call("StopVirtualCam").catch(() => {}); try { await (window.Setup?.hold ? Setup.hold(() => T.core.invoke("obs_setup")) : T.core.invoke("obs_setup")); toast("OBS is restarting with remote control on."); } catch (e) { toast("Setup failed: " + e, "bad"); }
           }) },
         { title: "Open OBS", desc: "Starts OBS on this computer if it isn’t running.", ctl: () => btn("Open OBS", () => T.core.invoke("obs_launch")) },
       ] : []),
@@ -102,7 +120,7 @@
       { title: "Guide", desc: "The six-step tour for new crew members.", ctl: () => btn("Open guide", () => { close(); document.querySelector("[data-help]")?.click(); }) },
     ] },
   ];
-  const GROUPS = [["appearance", "switching"], ["audio", "crew"], ["stream", "quality", "obs"], ["updates", "help"]];
+  const GROUPS = [["appearance", "layout", "switching"], ["audio", "crew"], ["stream", "quality", "obs"], ["updates", "help"]];
 
   /* stream quality rows read the values Quality loaded from OBS */
   function qualityRows() {

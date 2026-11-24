@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="editor.css">
 <link rel="stylesheet" href="transitions.css">
 <link rel="stylesheet" href="replay.css">
+<link rel="stylesheet" href="studio.css">
 </head>
 <body data-role="director">
 
@@ -57,6 +58,7 @@
       <div id="tbar" class="tbar" role="slider" tabindex="0" aria-label="T-bar: drag down to transition by hand" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="tbar-track"></div><div class="tbar-handle"></div></div>
       <label class="field compact"><span>Transition</span><select id="selTrans"></select></label>
       <button class="btn small" id="btnTransManage" type="button">Transitions…</button>
+      <button class="btn small" id="btnMultiview" type="button" title="All scenes at once (M)">Multiview</button>
       <button class="btn small" id="btnTransMute" type="button" aria-pressed="false"><span class="ic" aria-hidden="true"></span><span class="lbl">Sound on</span></button>
       <label class="field compact"><span>Duration (ms)</span><input id="inDur" type="number" min="50" max="20000" step="50"></label>
     </div>
@@ -68,12 +70,13 @@
     <div class="quickmode quick-only">
       <label class="field compact"><span>Transition</span><select id="selTrans2"></select></label>
       <label class="field compact"><span>Duration (ms)</span><input id="inDur2" type="number" min="50" max="20000" step="50"></label>
+      <button class="btn small" id="btnMultiview2" type="button" title="All scenes at once (M)">Multiview</button>
     </div>
   </section>
 
   <div class="docks">
-    <section class="dock dock-scenes" aria-labelledby="hScenes">
-      <div class="dock-title"><h2 id="hScenes">Scenes</h2></div>
+    <section data-dock="scenes" class="dock dock-scenes" aria-labelledby="hScenes">
+      <div class="dock-title"><h2 id="hScenes">Scenes</h2><div class="roles" id="sceneRoles" role="group" aria-label="Scene shortcuts"></div></div>
       <div class="dock-body"><div id="scenes" class="tiles"></div></div>
       <div class="dock-foot">
         <button id="btnNew" class="btn small">Add scene</button>
@@ -82,8 +85,8 @@
       </div>
     </section>
 
-    <section class="dock dock-mixer" aria-labelledby="hMixer">
-      <div class="dock-title"><h2 id="hMixer">Audio Mixer</h2></div>
+    <section data-dock="mixer" class="dock dock-mixer" aria-labelledby="hMixer">
+      <div class="dock-title"><h2 id="hMixer">Audio Mixer</h2><div class="mixquick" id="mixQuick" role="group" aria-label="Whole mix"></div></div>
       <div class="dock-body"><div id="mixer"></div></div>
       <div class="dock-foot">
         <button id="btnCleanMics" class="btn small">Clean up mics</button>
@@ -91,7 +94,7 @@
       </div>
     </section>
 
-    <section class="dock dock-music" aria-labelledby="hMusic">
+    <section data-dock="music" class="dock dock-music" aria-labelledby="hMusic">
       <div class="dock-title"><h2 id="hMusic">Music</h2></div>
       <div class="dock-body">
         <div id="musicRemote" class="tip" hidden></div>
@@ -161,7 +164,7 @@
       </div>
     </section>
 
-    <section class="dock dock-show" aria-label="Show">
+    <section data-dock="show" class="dock dock-show" aria-label="Show">
       <div class="tabs" role="tablist">
         <button role="tab" data-tab="score" aria-selected="true">Scores</button>
         <button role="tab" data-tab="live" aria-selected="false">Stream key</button>
@@ -171,6 +174,8 @@
       <div class="dock-body">
         <div class="panel" data-panel="score">
           <div id="scoreBox"></div>
+          <h3 class="subhead">Border scoreboard</h3>
+          <div id="boardBox"></div>
           <h3 class="subhead">Other text on screen</h3>
           <div id="textBox"></div>
         </div>
@@ -199,7 +204,7 @@
       </div>
     </section>
 
-    <section class="dock dock-controls" aria-labelledby="hControls">
+    <section data-dock="controls" class="dock dock-controls" aria-labelledby="hControls">
       <div class="dock-title"><h2 id="hControls">Controls</h2></div>
       <div class="dock-body controls">
         <button id="btnLive" class="btn live director">Start streaming</button>
@@ -262,6 +267,8 @@
 <script src="replay.js"></script>
 <script src="settings.js"></script>
 <script src="editor.js"></script>
+<script src="borders.js"></script>
+<script src="studio.js"></script>
 <script src="setup.js"></script>
 </body>
 </html>
