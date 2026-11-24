@@ -803,7 +803,11 @@ if (TAURI?.window) {
   });
   win.onResized?.(() => syncMax()); syncMax();
   // tauri.conf.json starts the window hidden; show it once the page has painted (main.rs has a fallback)
-  requestAnimationFrame(() => requestAnimationFrame(() => { win.show().then(() => win.setFocus()).catch(() => {}); }));
+  // a hidden window may not get animation frames, so a short timer backs them up
+  let shown = false;
+  const reveal = () => { if (shown) return; shown = true; win.show().then(() => win.setFocus()).catch(() => {}); };
+  requestAnimationFrame(() => requestAnimationFrame(reveal));
+  setTimeout(reveal, 300);
 }
 window.addEventListener("load", () => {
   if (window.Setup?.start) Setup.start();

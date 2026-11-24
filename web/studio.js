@@ -6,6 +6,10 @@
   const { obs, S, call, h, $, $$, store, toast, icon, shared } = window.JS;
   const T = window.__TAURI__;
   const sleep = ms => new Promise(r => setTimeout(r, ms));
+  // same rule as the .director buttons: helpers can't delete, rename or rebuild screens by accident
+  const role = () => document.body.dataset.role;
+  const isDirector = () => role() === "director";
+  const canEdit = () => role() === "director" || role() === "switcher";
 
   /* ================= context menu ================= */
   let menuEl = null;
@@ -147,7 +151,7 @@
       ...[0, -6, -12, -20].map(db => ({ label: `Set to ${db} dB`, fn: vol(db) })), "-",
       JS.MIC_KINDS.includes(a.kind) ? { label: "Clean up this mic", fn: () => JS.cleanMic(a.name) } : null,
       { label: "Limit loud spikes", fn: () => JS.ensureFilter(a.name, "JS Limiter", "limiter_filter", { threshold: -3, release_time: 60 }).then(() => toast(`Limiter on ${a.name}`)) },
-      { label: "Rename…", fn: async () => { const n = prompt(`Rename "${a.name}" to:`, a.name); if (n && n.trim() && n !== a.name) await call("SetInputName", { inputName: a.name, newInputName: n.trim() }); } },
+      !isDirector() ? null : { label: "Rename…", fn: async () => { const n = prompt(`Rename "${a.name}" to:`, a.name); if (n && n.trim() && n !== a.name) await call("SetInputName", { inputName: a.name, newInputName: n.trim() }); } },
       { label: "Hide from this mixer", fn: () => { store.set("mixHidden", [...hidden, a.name]); JS.renderMixer(); toast(`${a.name} is hidden here. Right-click the mixer to show it again.`); } },
       ...unhide]);
   });
@@ -196,8 +200,8 @@
   $("#scenes")?.addEventListener("contextmenu", async e => {
     e.preventDefault();
     const tile = e.target.closest(".tile"), [x, y] = at(e);
-    if (!tile) return menu(x, y, [{ head: "Scenes" }, { label: "Add scene…", fn: () => window.Editor?.openNew() },
-      ...(window.Borders?.TEMPLATES || []).map(t => ({ label: `New ${t.label}`, fn: () => Borders.create(t.id) })), "-",
+    if (!tile) return menu(x, y, [{ head: "Scenes" }, canEdit() ? { label: "Add scene…", fn: () => window.Editor?.openNew() } : null,
+      ...(canEdit() ? (window.Borders?.TEMPLATES || []) : []).map(t => ({ label: `New ${t.label}`, fn: () => Borders.create(t.id) })), "-",
       { label: "Multiview", key: "M", fn: openMv }]);
     const name = tile.dataset.scene, live = name === S.program;
     const border = await window.Borders?.detect(name);
@@ -206,15 +210,15 @@
       { label: S.studio ? "Transition to it now" : "Put on air", disabled: live, fn: async () => { if (S.studio) { await call("SetCurrentPreviewScene", { sceneName: name }); await JS.take(); } else JS.pickScene(name); } },
       { label: "Cut to it now", disabled: live, fn: async () => { if (S.studio) { await call("SetCurrentPreviewScene", { sceneName: name }); await JS.cut(); } else await call("SetCurrentProgramScene", { sceneName: name }); } },
       "-",
-      ...(border ? border.t.slots.filter(s => !s.replay).map(s => ({ label: `Change ${s.label.toLowerCase()}…`, fn: () => Borders.pickSlot(name, s) })) : []),
+      ...(border && canEdit() ? border.t.slots.filter(s => !s.replay).map(s => ({ label: `Change ${s.label.toLowerCase()}…`, fn: () => Borders.pickSlot(name, s) })) : []),
       { label: "Edit scene…", fn: () => window.Editor?.openEdit(name) },
-      { label: "Add source…", fn: () => window.Editor?.openNew(name) },
-      { label: "Rename…", fn: () => JS.renameScene(name) },
-      { label: "Duplicate", fn: () => duplicateScene(name) },
+      canEdit() ? { label: "Add source…", fn: () => window.Editor?.openNew(name) } : null,
+      isDirector() ? { label: "Rename…", fn: () => JS.renameScene(name) } : null,
+      isDirector() ? { label: "Duplicate", fn: () => duplicateScene(name) } : null,
       "-", { head: "Shortcut" },
       ...ROLES.map(([k, l]) => ({ label: l, checked: roles[k] === name, fn: () => setRole(k, roles[k] === name ? null : name) })),
       "-",
-      { label: "Delete", danger: true, disabled: live, fn: () => JS.deleteScene(name) }]);
+      isDirector() ? { label: "Delete", danger: true, disabled: live, fn: () => JS.deleteScene(name) } : null]);
   });
   /* obs-websocket has no "duplicate scene": make a new scene and add every item again with its transform */
   async function duplicateScene(name) {
@@ -295,7 +299,7 @@
   /* ================= edit sources on the Preview monitor ================= */
   const AUDIO_ONLY = /^wasapi_|^coreaudio|^pulse_/;
   const PV = { scene: null, items: [], tf: new Map(), sel: null, hover: null, drag: null, busy: false };
-  const editOn = () => store.get("pvEdit", true);
+  const editOn = () => store.get("pvEdit", true) && canEdit();
   const target = () => S.studio ? S.preview : S.program;
   const screenEl = () => (S.studio ? $("#imgPreview") : $("#imgProgram"))?.parentElement;
   const isLiveEdit = () => !S.studio || S.preview === S.program;
@@ -420,7 +424,7 @@
       if (PV.sel == null) return;
       const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
       if (d) { e.preventDefault(); e.stopPropagation(); const st = e.shiftKey ? 10 : 1, r = EdMath.rectOf(PV.tf.get(PV.sel)); setRect(PV.sel, { ...r, x: r.x + d[0] * st, y: r.y + d[1] * st }); return; }
-      if (e.key === "Delete") { e.preventDefault(); removeItem(PV.sel); }
+      if (e.key === "Delete" && isDirector()) { e.preventDefault(); removeItem(PV.sel); }
       if (e.key === "Escape") { PV.sel = null; draw(); }
     });
     ov.addEventListener("contextmenu", e => { e.preventDefault(); if (ov === curOv()) pvMenu(e, ov); });
@@ -448,7 +452,7 @@
       ...(border ? border.t.slots.filter(s => !s.replay).map(s => ({ label: `Change ${s.label.toLowerCase()}…`, fn: () => Borders.pickSlot(PV.scene, s) })) : []),
       { label: "Edit sources on the monitor", checked: editOn(), fn: () => { store.set("pvEdit", !editOn()); PV.sel = null; draw(); } },
       { label: "Multiview", key: "M", fn: openMv }];
-    if (!it) return menu(e.clientX, e.clientY, sceneItems);
+    if (!it || !editOn()) return menu(e.clientX, e.clientY, sceneItems.filter(x => x?.label !== "Add source…" || canEdit()));
     const n = PV.items.length, idx = it.sceneItemIndex, { w: CW, h: CH } = S.canvas;
     const r = EdMath.rectOf(t);
     const slot = border && !it.sourceName.startsWith("SITE Border") ? await slotFor(id) : null;
@@ -467,8 +471,8 @@
       { label: "Reset crop", disabled: !(t.cropLeft || t.cropRight || t.cropTop || t.cropBottom), fn: () => itemCall("SetSceneItemTransform", { sceneItemTransform: { cropLeft: 0, cropRight: 0, cropTop: 0, cropBottom: 0 } }) }, "-",
       { label: "Visible", checked: it.sceneItemEnabled, fn: () => itemCall("SetSceneItemEnabled", { sceneItemEnabled: !it.sceneItemEnabled }) },
       { label: "Locked", checked: it.sceneItemLocked, fn: () => itemCall("SetSceneItemLocked", { sceneItemLocked: !it.sceneItemLocked }) },
-      { label: "Rename source…", fn: async () => { const nn = prompt(`Rename "${it.sourceName}" to:`, it.sourceName); if (nn && nn.trim() && nn !== it.sourceName) await call("SetInputName", { inputName: it.sourceName, newInputName: nn.trim() }); } },
-      { label: "Remove from scene", key: "Del", danger: true, fn: () => removeItem(id) }, "-",
+      !isDirector() ? null : { label: "Rename source…", fn: async () => { const nn = prompt(`Rename "${it.sourceName}" to:`, it.sourceName); if (nn && nn.trim() && nn !== it.sourceName) await call("SetInputName", { inputName: it.sourceName, newInputName: nn.trim() }); } },
+      isDirector() ? { label: "Remove from scene", key: "Del", danger: true, fn: () => removeItem(id) } : null, "-",
       ...sceneItems]);
   }
   // OBS's own transform shortcuts, while the monitor has focus
@@ -568,6 +572,7 @@
   });
   for (const ev of ["CurrentProgramSceneChanged", "CurrentPreviewSceneChanged", "SceneListChanged"]) obs.on(ev, () => setTimeout(() => { if (mvOpen) renderMv(); renderRoles(); }, 50));
 
+  $("#role")?.addEventListener("change", () => { PV.sel = null; draw(); });
   JS.onReady(async () => { roles = await shared.get("roles", {}) || {}; decorateTiles(); loadItems(true); renderMixQuick(); });
 
   window.Studio = { menu, closeMenu, setZoom, get zoom() { return zoom; }, ZOOMS, decorateTiles, openMv, closeMv, resetLayout, wholeMix,

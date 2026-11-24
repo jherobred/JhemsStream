@@ -88,10 +88,16 @@
     await call("SetSceneItemTransform", { sceneName: scene, sceneItemId: id, sceneItemTransform: { boundsType: "OBS_BOUNDS_STRETCH", boundsWidth: S.canvas.w, boundsHeight: S.canvas.h, alignment: 5, positionX: 0, positionY: 0 } });
     await call("SetSceneItemLocked", { sceneName: scene, sceneItemId: id, sceneItemLocked: true });
   }
+  /* only the options in the URL's hash change: the file path belongs to the streaming PC, and a helper's laptop
+     (desktop app or browser) must never swap in its own path */
   async function setBoardOpts(patch) {
     boardOpts = { ...boardOpts, ...patch };
     await shared.set("board", boardOpts);
-    if ((await inputNames()).has(BOARD)) await call("SetInputSettings", { inputName: BOARD, inputSettings: { url: await boardUrl() } });
+    if (!(await inputNames()).has(BOARD)) return;
+    const url = (await call("GetInputSettings", { inputName: BOARD })).inputSettings.url || "";
+    const [base, hash = ""] = url.split("#"), q = new URLSearchParams(hash);
+    q.set("score", boardOpts.score ? "1" : "0"); q.set("label", boardOpts.label || "");
+    await call("SetInputSettings", { inputName: BOARD, inputSettings: { url: `${base}#${q}` } });
   }
   async function borderScenes() {
     const out = [];
@@ -103,6 +109,7 @@
   async function create(id) {
     const t = TEMPLATES.find(x => x.id === id);
     if (!t || !S.connected) return;
+    if (!S.isLocal) return toast("Make border screens from JhemsStream on the streaming PC. Its files have to be on the PC that runs OBS.", "warn");
     try {
       const d = await assetDir();
       let name = t.label, i = 2;
@@ -274,7 +281,7 @@
     boardOpts = { ...boardOpts, ...(await shared.get("board", {})) };
     renderBoardBox();
     // every crew member's JhemsStream keeps the shared scoreboard URL current (password or port can change)
-    if (T && (await inputNames().catch(() => new Set())).has(BOARD)) call("SetInputSettings", { inputName: BOARD, inputSettings: { url: await boardUrl() } }).catch(() => {});
+    if (T && S.isLocal && (await inputNames().catch(() => new Set())).has(BOARD)) call("SetInputSettings", { inputName: BOARD, inputSettings: { url: await boardUrl() } }).catch(() => {});
   });
   for (const ev of ["SceneListChanged", "SceneItemCreated", "SceneItemRemoved"]) obs.on(ev, () => { clearTimeout(renderBoardBox.t); renderBoardBox.t = setTimeout(renderBoardBox, 600); });
 
