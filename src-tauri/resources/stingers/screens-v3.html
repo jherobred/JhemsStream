@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Ready Player SITE stream screens</title>
+<!-- Full-page Ready Player SITE screens for the livestream (not the gameplay borders): a plain violet background with
+     slow light ribbons, the SITE wireframe code cube, and the words from the URL hash (JhemsStream edits them).
+     kind=title     kicker title sub timer=none|until|count until=HH:MM count=MIN lines=time~what|... layout=side|center
+     kind=vs        game label a b sub
+     kind=advance   game label team sub
+     kind=standings game title l1..l5 t1..t5
+     kind=casters   game n1 n2 (two camera windows stay see-through)
+     game=Valorant|Mobile Legends sets the accent (red | gold); anything else is SITE violet.
+     Every motion is a function of time, so the same page renders the PNG and video exports (?t=seconds, render.mjs). -->
+<style>
+@font-face{font-family:"SiteHead";src:local("Bahnschrift SemiBold Condensed"),local("Bahnschrift")}
+:root{--bg0:#0d0519;--bg1:#1b0a35;--ink:#fff;--soft:#d9ccef;--dim:#a493c4;--line:rgba(205,170,255,.28);--acc:#c86bff}
+html,body{margin:0;background:transparent;overflow:hidden}
+.stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;font-family:"Bahnschrift","Segoe UI",sans-serif;color:var(--ink)}
+canvas{position:absolute;inset:0}
+.a{will-change:transform,opacity}
+.word{position:absolute;height:44px}
+.logo{position:absolute;right:56px;bottom:42px;height:46px;opacity:.92}
+.foot{position:absolute;left:56px;bottom:52px;font-size:22px;letter-spacing:.06em;color:var(--dim);text-transform:uppercase}
+.kick{font-size:28px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+.title{font-family:"SiteHead","Bahnschrift",sans-serif;font-stretch:condensed;font-weight:700;font-size:150px;line-height:.9;letter-spacing:.005em;text-transform:uppercase}
+.sub{font-size:36px;color:var(--soft)}
+.acc{color:var(--acc)}
+.timer{display:flex;align-items:baseline;gap:18px;font-variant-numeric:tabular-nums}
+.timer b{font-family:"SiteHead","Bahnschrift",sans-serif;font-weight:700;font-size:96px;letter-spacing:.02em}
+.timer span{font-size:24px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.sched{display:grid;grid-template-columns:auto 1fr;column-gap:28px;row-gap:10px;font-size:30px}
+.sched b{font-weight:700;color:var(--acc);text-align:right;font-variant-numeric:tabular-nums}
+.sched span{color:var(--soft)}
+.panel{position:absolute;top:560px;width:620px;height:150px;display:grid;place-items:center;background:rgba(14,5,28,.78);border:2px solid var(--line)}
+.panel .n{display:block;max-width:570px;overflow:hidden;text-align:center;font-family:"SiteHead","Bahnschrift",sans-serif;font-weight:700;font-size:84px;text-transform:uppercase;white-space:nowrap;letter-spacing:.01em}
+.panel .tag{position:absolute;left:24px;top:-34px;font-size:22px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase}
+.panel.r .tag{left:auto;right:24px}
+.row{position:absolute;left:330px;width:1260px;display:grid;grid-template-columns:300px 1fr;align-items:center;height:84px;border-bottom:1px solid var(--line)}
+.row .p{font-size:26px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.row .t{font-family:"SiteHead","Bahnschrift",sans-serif;font-weight:700;font-size:56px;text-transform:uppercase;white-space:nowrap}
+.row.first{height:120px;border-bottom:2px solid var(--acc)}
+.row.first .p{color:var(--acc)}
+.row.first .t{font-size:84px}
+.cam{position:absolute;top:250px;width:800px;height:450px;border:2px solid var(--line)}
+.plate{position:absolute;top:722px;width:800px;text-align:center}
+.plate .n{font-family:"SiteHead","Bahnschrift",sans-serif;font-weight:700;font-size:54px;text-transform:uppercase}
+.plate .r{font-size:22px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase;margin-top:4px}
+</style>
+<div class="stage" id="stage"><canvas id="bg" width="1920" height="1080"></canvas></div>
+<script>
+"use strict";
+const Q = new URLSearchParams(location.hash.slice(1) || location.search.slice(1));
+const P = Object.fromEntries(Q);
+const stage = document.getElementById("stage"), cv = document.getElementById("bg"), g = cv.getContext("2d");
+const W = 1920, H = 1080;
+const fit = () => { stage.style.transform = `scale(${innerWidth / W},${innerHeight / H})`; };
+addEventListener("resize", fit); fit();
+const game = (P.game || "").toLowerCase();
+const ACC = game.includes("valorant") ? "#ff4655" : game.includes("mobile") ? "#f0bd4f" : "#c86bff";
+document.documentElement.style.setProperty("--acc", ACC);
+const el = (tag, cls, txt, css) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; if (css) e.style.cssText = css; stage.append(e); return e; };
+const clamp = v => Math.max(0, Math.min(1, v)), ease = x => 1 - Math.pow(1 - clamp(x), 3);
+/* entrances: each element has a start time; frame(t) sets opacity and offset from it (deterministic) */
+const ins = [];
+const enter = (e, at, dy = 28) => { e.classList.add("a"); ins.push([e, at, dy]); return e; };
+/* shrink only when a word is wider than its box (long team names); titles may wrap to a second line */
+function shrink(node, maxW) { let s = parseFloat(getComputedStyle(node).fontSize); while (node.scrollWidth > node.clientWidth + 1 && s > 24) { s -= 2; node.style.fontSize = s + "px"; } }
+
+/* ---------- background: violet base, slow light ribbons, vignette; holes stay clear (camera windows) ---------- */
+const holes = [];
+let seed = 3; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+const ribbons = Array.from({ length: 7 }, (_, i) => ({ y: 260 + i * 95 + rnd() * 40, a: 40 + rnd() * 70, f: 0.0012 + rnd() * 0.0012, s: 0.05 + rnd() * 0.08, ph: rnd() * 6.28, w: 1 + rnd() * 1.6, o: 0.10 + rnd() * 0.16 }));
+const glyphs = "01アイウエオカキクケコサシスセソタチツテト<>/=+*#SITE".split("");
+function background(t) {
+  const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, "#160830"); gr.addColorStop(1, "#0b0417");
+  g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  const glow = g.createRadialGradient(W * 0.5, H * 0.42, 40, W * 0.5, H * 0.42, W * 0.6);
+  glow.addColorStop(0, "rgba(120,50,200,.30)"); glow.addColorStop(1, "rgba(120,50,200,0)"); g.fillStyle = glow; g.fillRect(0, 0, W, H);
+  g.save(); g.globalCompositeOperation = "lighter";
+  for (const r of ribbons) {
+    g.beginPath();
+    for (let x = -20; x <= W + 20; x += 16) { const y = r.y + Math.sin(x * r.f + r.ph + t * r.s) * r.a + Math.sin(x * r.f * 2.3 - t * r.s * 1.4) * r.a * 0.3; x < 0 ? g.moveTo(x, y) : g.lineTo(x, y); }
+    g.strokeStyle = `rgba(200,140,255,${r.o})`; g.lineWidth = r.w; g.stroke();
+  }
+  g.restore();
+  const v = g.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.95); v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,.55)");
+  g.fillStyle = v; g.fillRect(0, 0, W, H);
+  for (const [x, y, w, h] of holes) g.clearRect(x, y, w, h);
+}
+
+/* ---------- the SITE code cube: a wireframe cube with glyphs drifting inside, turning slowly ---------- */
+const cubeGlyphs = Array.from({ length: 46 }, () => [rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1, glyphs[Math.floor(rnd() * glyphs.length)], rnd()]);
+function cube(t, cx, cy, s, alpha, label) {
+  const ry = t * 0.35 + 0.6, rx = -0.42 + Math.sin(t * 0.25) * 0.06;
+  const rot = ([x, y, z]) => { let c = Math.cos(ry), sn = Math.sin(ry); [x, z] = [x * c + z * sn, -x * sn + z * c]; c = Math.cos(rx); sn = Math.sin(rx); [y, z] = [y * c - z * sn, y * sn + z * c]; return [x, y, z]; };
+  const pr = ([x, y, z]) => { const k = 3.4 / (3.4 - z); return [cx + x * s * k, cy + y * s * k, k]; };
+  const V = [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]].map(v => pr(rot(v)));
+  const E = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
+  g.save(); g.globalAlpha = alpha;
+  g.font = `${Math.round(s * 0.16)}px "MS Gothic",Consolas,monospace`; g.textAlign = "center"; g.textBaseline = "middle";
+  for (const [x, y, z, ch, k] of cubeGlyphs) {
+    const yy = ((y + 1 + t * 0.12 * (0.5 + k)) % 2) - 1, [px, py, kk] = pr(rot([x * 0.85, yy * 0.85, z * 0.85]));
+    g.fillStyle = `rgba(220,190,255,${0.18 + 0.4 * (kk - 0.7)})`; g.fillText(ch, px, py);
+  }
+  const core = g.createRadialGradient(cx, cy, 0, cx, cy, s * 1.1); core.addColorStop(0, "rgba(200,110,255,.35)"); core.addColorStop(1, "rgba(200,110,255,0)");
+  g.fillStyle = core; g.fillRect(cx - s * 1.5, cy - s * 1.5, s * 3, s * 3);
+  g.lineCap = "round";
+  for (const [a, b] of E) {
+    const grd = g.createLinearGradient(V[a][0], V[a][1], V[b][0], V[b][1]); grd.addColorStop(0, "#8f7bff"); grd.addColorStop(1, "#ff6fd8");
+    g.strokeStyle = grd; g.lineWidth = 2.4; g.shadowColor = "rgba(210,120,255,.9)"; g.shadowBlur = 16;
+    g.beginPath(); g.moveTo(V[a][0], V[a][1]); g.lineTo(V[b][0], V[b][1]); g.stroke();
+  }
+  g.shadowBlur = 0; g.fillStyle = "#fff"; for (const v of V) { g.beginPath(); g.arc(v[0], v[1], 3.2, 0, 6.28); g.fill(); }
+  if (label) { g.font = `700 ${Math.round(s * 0.7)}px "Bahnschrift",sans-serif`; g.fillStyle = "#fff"; g.fillText(label, cx, cy + 4); }
+  g.restore();
+}
+
+/* ---------- layouts ---------- */
+const kind = P.kind || "title";
+const wordmark = el("img", "word", null, "left:56px;top:46px"); wordmark.src = "site-title.png"; wordmark.alt = "";
+const logo = el("img", "logo"); logo.src = "site-logo.png"; logo.alt = "";
+el("div", "foot", "Esports Competition");
+const timerText = () => {
+  const mode = P.timer || (P.until ? "until" : "none");
+  if (mode === "none") return null;
+  let left;
+  if (mode === "until") { const [hh, mm] = (P.until || "15:30").split(":").map(Number), now = new Date(), tt = new Date(now); tt.setHours(hh, mm || 0, 0, 0); left = Math.round((tt - now) / 1000); }
+  else { window.__end ??= Date.now() + (+P.count || 10) * 60000; left = Math.round((window.__end - Date.now()) / 1000); }
+  if (left <= 0) return ["Any moment now", ""];
+  const h = Math.floor(left / 3600), m = Math.floor(left / 60) % 60, s = left % 60, p = n => String(n).padStart(2, "0");
+  return [(h ? h + ":" : "") + p(m) + ":" + p(s), P.timerLabel || "Until we go live"];
+};
+
+let drawFx = () => {};
+if (kind === "title") {
+  const center = P.layout === "center";
+  const box = el("div", "", null, center ? "position:absolute;left:0;right:0;top:640px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center"
+    : "position:absolute;left:880px;right:120px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center;gap:22px");
+  if (P.kicker) box.append(enter(Object.assign(document.createElement("div"), { className: "kick", textContent: P.kicker }), 0.2));
+  const tt = enter(Object.assign(document.createElement("div"), { className: "title", textContent: P.title || "Starting soon" }), 0.35, 40); box.append(tt);
+  if (P.sub) box.append(enter(Object.assign(document.createElement("div"), { className: "sub", textContent: P.sub }), 0.6));
+  const tm = document.createElement("div"); tm.className = "timer"; tm.innerHTML = "<b></b><span></span>"; box.append(enter(tm, 0.8));
+  if (P.lines) {
+    const sc = document.createElement("div"); sc.className = "sched"; box.append(enter(sc, 1.0));
+    for (const ln of P.lines.split("|").filter(Boolean)) { const [a, b] = ln.split("~"); sc.append(Object.assign(document.createElement("b"), { textContent: b ? a : "" }), Object.assign(document.createElement("span"), { textContent: b || a })); }
+  }
+  requestAnimationFrame(() => shrink(tt, center ? 1600 : 900));
+  const tick = () => { const x = timerText(); tm.style.display = x ? "" : "none"; if (x) { tm.firstChild.textContent = x[0]; tm.lastChild.textContent = x[1]; } };
+  tick(); setInterval(tick, 1000);
+  drawFx = t => center ? cube(t, W / 2, 360, 150, ease(t / 0.8)) : cube(t, 470, 530, 210, ease(t / 0.8));
+} else if (kind === "vs") {
+  const head = el("div", "", null, "position:absolute;left:0;right:0;top:170px;text-align:center");
+  head.append(enter(Object.assign(document.createElement("div"), { className: "kick", textContent: P.label || "Up next" }), 0.2));
+  const gt = enter(Object.assign(document.createElement("div"), { className: "title acc", textContent: P.game || "Up next" }), 0.35, 40); gt.style.fontSize = "130px"; head.append(gt);
+  const pa = enter(el("div", "panel", null, "left:150px"), 0.6, 0), pb = enter(el("div", "panel r", null, "right:150px"), 0.6, 0);
+  pa.innerHTML = `<span class="tag">Team 1</span><span class="n"></span>`; pb.innerHTML = `<span class="tag">Team 2</span><span class="n"></span>`;
+  pa.querySelector(".n").textContent = P.a || "TBA"; pb.querySelector(".n").textContent = P.b || "TBA";
+  pa.style.borderLeft = `6px solid ${ACC}`; pb.style.borderRight = `6px solid ${ACC}`;
+  requestAnimationFrame(() => { shrink(pa.querySelector(".n"), 560); shrink(pb.querySelector(".n"), 560); });
+  if (P.sub) enter(el("div", "sub", P.sub, "position:absolute;left:0;right:0;top:770px;text-align:center"), 0.9);
+  pa.dataset.dx = "-80"; pb.dataset.dx = "80";
+  drawFx = t => cube(t, W / 2, 636, 92, ease((t - 0.4) / 0.6), "VS");
+} else if (kind === "advance") {
+  const box = el("div", "", null, "position:absolute;left:0;right:0;top:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding-top:300px");
+  box.append(enter(Object.assign(document.createElement("div"), { className: "kick", textContent: [P.game, P.label].filter(Boolean).join(" · ") }), 0.2));
+  const tn = enter(Object.assign(document.createElement("div"), { className: "title", textContent: P.team || "Team" }), 0.4, 40); tn.style.fontSize = "190px"; box.append(tn);
+  box.append(enter(Object.assign(document.createElement("div"), { className: "sub acc", textContent: P.sub || "Advances to the Grand Finals" }), 0.7));
+  requestAnimationFrame(() => shrink(tn, 1700));
+  drawFx = t => cube(t, W / 2, 300, 110, ease(t / 0.8));
+} else if (kind === "standings") {
+  const head = el("div", "", null, "position:absolute;left:330px;top:150px");
+  head.append(enter(Object.assign(document.createElement("div"), { className: "kick acc", textContent: P.game || "" }), 0.2));
+  const tt = enter(Object.assign(document.createElement("div"), { className: "title", textContent: P.title || "Final standings" }), 0.35, 40); tt.style.fontSize = "110px"; head.append(tt);
+  const rows = [1, 2, 3, 4, 5].map(i => [P["l" + i], P["t" + i]]).filter(([l]) => l);
+  let y = rows.length > 3 ? 390 : 430;
+  // revealed from last place up, so the champion lands last
+  rows.forEach(([l, tm], i) => {
+    const r = el("div", `row${i === 0 ? " first" : ""}`, null, `top:${y}px`); r.innerHTML = `<span class="p"></span><span class="t"></span>`;
+    r.querySelector(".p").textContent = l; r.querySelector(".t").textContent = tm || "TBA";
+    enter(r, 0.6 + (rows.length - 1 - i) * 0.45, 0); r.dataset.dx = "-40";
+    y += i === 0 ? 132 : 92;
+  });
+  drawFx = t => cube(t, 1640, 250, 80, ease(t / 0.8));
+} else if (kind === "casters") {
+  const head = el("div", "", null, "position:absolute;left:0;right:0;top:140px;text-align:center");
+  head.append(enter(Object.assign(document.createElement("div"), { className: "kick acc", textContent: [P.game, "Shoutcasters"].filter(Boolean).join(" · ") }), 0.2));
+  for (const [x, n] of [[120, P.n1], [1000, P.n2]]) {
+    holes.push([x, 250, 800, 450]);
+    enter(el("div", "cam", null, `left:${x - 2}px`), 0.3, 0);
+    const pl = enter(el("div", "plate", null, `left:${x}px`), 0.6); pl.innerHTML = `<div class="n"></div><div class="r">Shoutcaster</div>`; pl.querySelector(".n").textContent = n || "Caster";
+  }
+}
+
+/* ---------- one frame at time t (seconds since the screen appeared) ---------- */
+function frame(t) {
+  background(t); drawFx(t);
+  for (const [e, at, dy] of ins) { const k = ease((t - at) / 0.7), dx = +(e.dataset.dx || 0); e.style.opacity = k; e.style.transform = `translate(${dx * (1 - k)}px,${dy * (1 - k)}px)`; }
+  for (const e of [wordmark, logo]) e.style.opacity = ease(t / 0.6);
+}
+window.frameAt = t => frame(t);
+/* live: run on its own clock; restart the entrance when OBS puts it on air; pause while hidden */
+let t0 = performance.now(), running = true;
+if (P.render !== "1") {
+  const loop = () => { if (running) frame((performance.now() - t0) / 1000); requestAnimationFrame(loop); }; loop();
+  addEventListener("obsSourceVisibleChanged", e => { running = !!e.detail?.visible; });
+  addEventListener("obsSourceActiveChanged", e => { if (e.detail?.active) t0 = performance.now(); });
+} else frame(+(P.t || 4));
+</script>
+</html>

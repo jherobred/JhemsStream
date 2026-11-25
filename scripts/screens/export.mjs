@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { SCREENS } from "./list.mjs";
+const { SCREENS } = await import(process.env.SCREENS_LIST ? new URL(process.env.SCREENS_LIST, import.meta.url) : "./list.mjs"); // SCREENS_LIST=./list-v3.mjs SCREENS_PAGE=screens-v3.html for the v3 set
 
 const [outdir = "exports", mode = "png", only] = process.argv.slice(2);
 mkdirSync(outdir, { recursive: true });
@@ -21,7 +21,7 @@ let id = 0; const pend = new Map(); ws.addEventListener("message", e => { const 
 const call = (method, params = {}) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
 await call("Emulation.setDeviceMetricsOverride", { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
 await call("Emulation.setDefaultBackgroundColorOverride", { color: { r: 0, g: 0, b: 0, a: 0 } });
-const page = resolve("src-tauri/resources/stingers", "screens.html");
+const page = resolve("src-tauri/resources/stingers", process.env.SCREENS_PAGE || "screens.html");
 const shot = async () => Buffer.from((await call("Page.captureScreenshot", { format: "png" })).result.data, "base64");
 for (const s of SCREENS.filter(s => !only || s.id === only)) {
   const q = new URLSearchParams({ ...s.q, render: "1", t: "6" });
