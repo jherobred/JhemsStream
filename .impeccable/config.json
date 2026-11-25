@@ -1,0 +1,44 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "src-tauri/resources/stingers/overlay.html"
+        ],
+        "createdAt": "2026-11-22T19:01:40.550Z",
+        "reason": "Claude: CRT phosphor glow is the SITE poster art direction (green CRT screens), not UI chrome"
+      },
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "src-tauri/resources/stingers/site.html"
+        ],
+        "createdAt": "2026-11-24T20:16:41.133Z",
+        "reason": "Broadcast graphics for OBS, not app UI: gold/neon lettering matches SITE's own BG1/BG2 art; Jhems asked for thrilling Ready Player SITE win screens"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "src-tauri/resources/stingers/site.html"
+        ],
+        "createdAt": "2026-11-24T20:16:41.324Z",
+        "reason": "Broadcast graphics for OBS, not app UI: neon glow is the SITE event's visual language (BG1/BG2 art)"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "src-tauri/resources/stingers/screens.html"
+        ],
+        "createdAt": "2026-11-25T04:05:13.382Z",
+        "reason": "user confirmed: Jhems asked for the screens to be heavily based on his neon RPS v2 designs"
+      }
+    ]
+  }
+}

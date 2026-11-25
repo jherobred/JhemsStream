@@ -1,0 +1,291 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SITE throne</title>
+<!-- Win-screen backgrounds: a gold and velvet throne on a dais, the team's name in gold letters on the backrest and a
+     crown on the seat, lit like a stage in SITE purple. Rendered once per team by throne.mjs (headless Edge, WebGL).
+     ?team=NAME&crown=0 (no crown: a team that advances but hasn't won the title yet) -->
+<style>
+html,body{margin:0;background:#000;overflow:hidden}canvas{display:block}
+.ov{position:absolute;inset:0;pointer-events:none;font-family:"Bahnschrift","Segoe UI",sans-serif;color:#fff}
+.bar{position:absolute;left:0;right:0;height:84px;background:#05020a}
+.txt{position:absolute;left:0;right:0;top:640px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px}
+.k{font-size:30px;letter-spacing:.14em;text-transform:uppercase}
+.n{font-weight:700;font-stretch:condensed;font-size:150px;line-height:.95;text-transform:uppercase;letter-spacing:.01em;white-space:nowrap;text-shadow:0 6px 24px rgba(0,0,0,.6)}
+.x{margin-top:14px;padding:8px 34px 6px;font-weight:700;font-size:56px;letter-spacing:.04em;color:#fff;clip-path:polygon(18px 0,100% 0,calc(100% - 18px) 100%,0 100%)}
+.f{margin-top:10px;font-size:24px;letter-spacing:.1em;text-transform:uppercase;opacity:.8}
+</style>
+<script type="importmap">{"imports":{"three":"../../node_modules/three/build/three.module.js","three/addons/":"../../node_modules/three/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { BokehPass } from "three/addons/postprocessing/BokehPass.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { TextGeometry } from "three/addons/geometries/TextGeometry.js";
+import { TTFLoader } from "three/addons/loaders/TTFLoader.js";
+import { Font } from "three/addons/loaders/FontLoader.js";
+import { Reflector } from "three/addons/objects/Reflector.js";
+
+const P = new URLSearchParams(location.search);
+const TEAM = (P.get("team") || "TEAM").toUpperCase();
+const W = 1920, H = 1080;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H); renderer.setPixelRatio(1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.append(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05020b);
+scene.fog = new THREE.FogExp2(0x0a0316, 0.085);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.32;
+
+// a low three-quarter view, like a camera on a slider at the foot of the stage
+const camera = new THREE.PerspectiveCamera(29, W / H, 0.1, 100);
+camera.position.set(0.2, 1.0, 7.6); camera.lookAt(-1.05, 1.62, -0.2);
+
+/* ---------- procedural textures: fine noise for velvet pile and polished stone veins ---------- */
+let tseed = 11; const trnd = () => ((tseed = (tseed * 1664525 + 1013904223) >>> 0) / 4294967296);
+function noiseTex(size, blobs, rmin, rmax, alpha, base) {
+  const c = document.createElement("canvas"); c.width = c.height = size; const g = c.getContext("2d");
+  g.fillStyle = base; g.fillRect(0, 0, size, size);
+  for (let i = 0; i < blobs; i++) { const r = rmin + trnd() * (rmax - rmin), x = trnd() * size, y = trnd() * size, v = Math.floor(trnd() * 255);
+    const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, "rgba(" + v + "," + v + "," + v + "," + alpha + ")"); gr.addColorStop(1, "rgba(" + v + "," + v + "," + v + ",0)"); g.fillStyle = gr; g.fillRect(x - r, y - r, 2 * r, 2 * r); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+}
+function veins(size) {
+  const c = document.createElement("canvas"); c.width = c.height = size; const g = c.getContext("2d");
+  g.fillStyle = "#16101e"; g.fillRect(0, 0, size, size);
+  for (let i = 0; i < 26; i++) { g.strokeStyle = "rgba(" + (120 + trnd() * 60) + "," + (90 + trnd() * 40) + "," + (150 + trnd() * 60) + "," + (0.05 + trnd() * 0.12) + ")"; g.lineWidth = 0.6 + trnd() * 2.2;
+    g.beginPath(); let x = trnd() * size, y = 0; g.moveTo(x, y); while (y < size) { x += (trnd() - 0.5) * 40; y += 10 + trnd() * 30; g.lineTo(x, y); } g.stroke(); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const pile = noiseTex(512, 4000, 1, 4, 0.5, "#808080"); pile.repeat.set(3, 3);
+const marble = veins(1024); marble.repeat.set(2, 2);
+const smudge = noiseTex(512, 300, 20, 90, 0.25, "#606060");
+
+/* ---------- materials ---------- */
+const gold = new THREE.MeshPhysicalMaterial({ color: 0xc8922e, metalness: 1, roughness: 0.28, roughnessMap: smudge, clearcoat: 0.25, clearcoatRoughness: 0.3 });
+const goldDark = new THREE.MeshPhysicalMaterial({ color: 0x8f6216, metalness: 1, roughness: 0.4, roughnessMap: smudge });
+const velvet = new THREE.MeshPhysicalMaterial({ color: 0x24053d, roughness: 0.9, bumpMap: pile, bumpScale: 0.6, sheen: 1, sheenRoughness: 0.32, sheenColor: new THREE.Color(0x7b2fb0) });
+const velvetRed = new THREE.MeshPhysicalMaterial({ color: 0x2c0516, roughness: 0.9, bumpMap: pile, bumpScale: 0.6, sheen: 1, sheenRoughness: 0.35, sheenColor: new THREE.Color(0x9a2350) });
+const stone = new THREE.MeshPhysicalMaterial({ map: marble, color: 0xb8a8c8, roughness: 0.3, roughnessMap: smudge, metalness: 0.05, clearcoat: 0.5, clearcoatRoughness: 0.25 });
+const gem = c => new THREE.MeshPhysicalMaterial({ color: c, metalness: 0, roughness: 0.05, transmission: 0.6, thickness: 0.4, ior: 2.2, emissive: c, emissiveIntensity: 0.55 });
+const neon = c => new THREE.MeshBasicMaterial({ color: c, toneMapped: false });
+const shadowy = m => { m.castShadow = true; m.receiveShadow = true; return m; };
+const add = (geo, mat, x = 0, y = 0, z = 0, parent = scene) => { const m = shadowy(new THREE.Mesh(geo, mat)); m.position.set(x, y, z); parent.add(m); return m; };
+
+/* ---------- floor: dark marble that reflects the stage ---------- */
+const mirror = new Reflector(new THREE.PlaneGeometry(40, 40), { textureWidth: W, textureHeight: H, color: 0x5a5a66 });
+mirror.rotation.x = -Math.PI / 2; mirror.position.y = -0.001; scene.add(mirror);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: 0x060309, roughness: 0.4, roughnessMap: smudge, metalness: 0.1, transparent: true, opacity: 0.7 }));
+floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+
+/* ---------- dais: three steps with gold edges and a velvet runner ---------- */
+const STEP = 0.2;
+[[4.6, 3.4], [3.7, 2.7], [2.8, 2.0]].forEach(([w, d], i) => {
+  const y = STEP * i + STEP / 2;
+  add(new RoundedBoxGeometry(w, STEP, d, 3, 0.02), stone, 0, y, 0);
+  add(new THREE.BoxGeometry(w + 0.01, 0.025, 0.025), gold, 0, y + STEP / 2 - 0.012, d / 2);
+  add(new THREE.BoxGeometry(0.025, 0.025, d), gold, -w / 2, y + STEP / 2 - 0.012, 0);
+  add(new THREE.BoxGeometry(0.025, 0.025, d), gold, w / 2, y + STEP / 2 - 0.012, 0);
+});
+const TOP = STEP * 3;
+
+/* ---------- throne ---------- */
+const throne = new THREE.Group(); throne.position.set(0, TOP, -0.25); scene.add(throne);
+// seat base and cushion
+add(new RoundedBoxGeometry(1.5, 0.5, 1.05, 4, 0.04), gold, 0, 0.25, 0, throne);
+add(new RoundedBoxGeometry(1.2, 0.34, 0.06, 4, 0.02), velvet, 0, 0.26, 0.52, throne);
+add(new RoundedBoxGeometry(1.32, 0.2, 0.95, 6, 0.09), velvet, 0, 0.6, 0.03, throne);
+// legs: short posts ending in balls
+for (const x of [-0.68, 0.68]) for (const z of [-0.45, 0.45]) { add(new THREE.CylinderGeometry(0.06, 0.08, 0.12, 24), goldDark, x, 0.06, z, throne); }
+// backrest: a pointed arch in gold, a velvet panel inside it
+const arch = (w, h, r) => { const s = new THREE.Shape(); s.moveTo(-w / 2, 0); s.lineTo(-w / 2, h - r); s.quadraticCurveTo(-w / 2, h, 0, h + r * 0.55); s.quadraticCurveTo(w / 2, h, w / 2, h - r); s.lineTo(w / 2, 0); s.closePath(); return s; };
+const back = new THREE.Mesh(new THREE.ExtrudeGeometry(arch(1.55, 2.05, 0.55), { depth: 0.16, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.04, bevelSegments: 6, curveSegments: 48 }), gold);
+shadowy(back); back.position.set(0, 0.5, -0.55); throne.add(back);
+const panel = new THREE.Mesh(new THREE.ExtrudeGeometry(arch(1.2, 1.8, 0.42), { depth: 0.05, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 4, curveSegments: 48 }), velvet);
+shadowy(panel); panel.position.set(0, 0.68, -0.36); throne.add(panel);
+// tufting: gold buttons on the velvet
+for (let r = 0; r < 4; r++) for (let c = -2; c <= 2; c++) { if ((r + c) % 2) continue; add(new THREE.SphereGeometry(0.018, 16, 12), gold, c * 0.2, 0.95 + r * 0.24, -0.29, throne); }
+// armrests with scrolls and finials
+for (const sx of [-1, 1]) {
+  add(new RoundedBoxGeometry(0.16, 0.12, 1.0, 4, 0.05), gold, sx * 0.78, 0.92, 0.0, throne);
+  add(new RoundedBoxGeometry(0.12, 0.08, 0.86, 4, 0.03), velvet, sx * 0.78, 0.99, -0.02, throne);
+  add(new THREE.CylinderGeometry(0.06, 0.07, 0.45, 24), gold, sx * 0.78, 0.68, 0.45, throne);
+  const scroll = add(new THREE.TorusGeometry(0.09, 0.035, 16, 40, Math.PI * 1.5), gold, sx * 0.78, 0.92, 0.52, throne); scroll.rotation.y = Math.PI / 2;
+  add(new THREE.SphereGeometry(0.07, 32, 24), gold, sx * 0.86, 2.55, -0.47, throne);
+  add(new THREE.ConeGeometry(0.035, 0.22, 24), gold, sx * 0.86, 2.72, -0.47, throne);
+  add(new THREE.CylinderGeometry(0.05, 0.05, 2.0, 24), gold, sx * 0.86, 1.5, -0.47, throne);
+}
+// crest: central jewel with rays
+const crestY = 2.78;
+add(new THREE.OctahedronGeometry(0.14, 0), gem(0xc23cff), 0, crestY, -0.38, throne).scale.set(1, 1.35, 0.6);
+for (let i = 0; i < 7; i++) { const a = -Math.PI / 2 + (i - 3) * 0.32; const sp = add(new THREE.ConeGeometry(0.025, 0.36, 16), gold, Math.cos(a + Math.PI) * -0.3, crestY + Math.sin(-a) * 0.0 + 0.05 + Math.cos((i - 3) * 0.32) * 0.18, -0.42, throne); sp.rotation.z = (i - 3) * -0.32; }
+
+/* ---------- crown on the seat ---------- */
+const crown = new THREE.Group(); crown.visible = P.get("crown") !== "0"; crown.position.set(0, 0.7 + 0.02, 0.18); crown.rotation.set(-0.08, -0.55, 0.05); crown.scale.setScalar(1.3); throne.add(crown);
+add(new THREE.CylinderGeometry(0.2, 0.19, 0.12, 64, 1, true), gold, 0, 0.06, 0, crown).material.side = THREE.DoubleSide;
+add(new THREE.TorusGeometry(0.2, 0.014, 12, 64), gold, 0, 0.0, 0, crown).rotation.x = Math.PI / 2;
+add(new THREE.TorusGeometry(0.2, 0.012, 12, 64), gold, 0, 0.12, 0, crown).rotation.x = Math.PI / 2;
+add(new THREE.SphereGeometry(0.17, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), velvetRed, 0, 0.11, 0, crown);
+const gemCols = [0xff2a4a, 0x7a2cff, 0x29b6ff, 0x2bff8a];
+for (let i = 0; i < 8; i++) {
+  const a = i / 8 * Math.PI * 2, x = Math.sin(a) * 0.2, z = Math.cos(a) * 0.2;
+  const tip = add(new THREE.ConeGeometry(0.035, 0.17, 4), gold, x, 0.2, z, crown); tip.rotation.y = a;
+  add(new THREE.SphereGeometry(0.022, 20, 14), gold, x, 0.3, z, crown);
+  add(new THREE.SphereGeometry(0.021, 20, 14), gem(gemCols[i % 4]), Math.sin(a) * 0.205, 0.06, Math.cos(a) * 0.205, crown);
+}
+add(new THREE.SphereGeometry(0.03, 20, 14), gold, 0, 0.33, 0, crown);
+add(new THREE.OctahedronGeometry(0.035), gold, 0, 0.38, 0, crown);
+
+/* ---------- stage: columns with neon strips, a back wall of purple light ---------- */
+for (const sx of [-1, 1]) for (const z of [-1.6, 0.4]) {
+  add(new THREE.CylinderGeometry(0.22, 0.26, 6, 32), stone, sx * (z < 0 ? 2.4 : 3.3), 3, z);
+  add(new THREE.BoxGeometry(0.04, 5.4, 0.04), neon(0xb04cff), sx * (z < 0 ? 2.4 : 3.3) - sx * 0.2, 3, z + 0.18);
+}
+const wall = new THREE.Group(); wall.position.set(0, 0, -3.2); scene.add(wall);
+// a far wall of faint light, the SITE grid seen through haze
+wall.position.z = -5.5;
+for (let i = -10; i <= 10; i++) add(new THREE.BoxGeometry(0.02, 9, 0.02), neon(new THREE.Color(0.5, 0.15, 0.9).multiplyScalar(0.22 - Math.abs(i) * 0.012)), i * 0.7, 4.5, 0, wall);
+for (let j = 0; j < 9; j++) add(new THREE.BoxGeometry(14, 0.02, 0.02), neon(new THREE.Color(0.5, 0.15, 0.9).multiplyScalar(0.12)), 0, j * 0.75 + 0.3, 0, wall);
+// halo arch behind the throne
+const halo = new THREE.Mesh(new THREE.TorusGeometry(1.55, 0.022, 16, 120, Math.PI), neon(new THREE.Color(0xe07bff).multiplyScalar(0.7))); halo.position.set(0, TOP + 1.9, -1.5); scene.add(halo);
+const halo2 = new THREE.Mesh(new THREE.TorusGeometry(1.75, 0.01, 16, 120, Math.PI), neon(new THREE.Color(0x7a3cff).multiplyScalar(0.6))); halo2.position.set(0, TOP + 1.9, -1.55); scene.add(halo2);
+
+/* ---------- the team's name in gold letters on the backrest ---------- */
+async function nameplate() {
+  const font = new Font(await new Promise((res, rej) => new TTFLoader().load(P.get("font") || "file:///C:/Windows/Fonts/georgiab.ttf", res, undefined, rej)));
+  const geo = new TextGeometry(TEAM, { font, size: 0.24, depth: 0.035, curveSegments: 10, bevelEnabled: true, bevelThickness: 0.008, bevelSize: 0.006, bevelSegments: 3 });
+  geo.computeBoundingBox(); const bb = geo.boundingBox, tw = bb.max.x - bb.min.x, th = bb.max.y - bb.min.y;
+  const maxW = 1.12, maxH = 0.2, k = Math.min(maxW / tw, maxH / th);
+  geo.translate(-(bb.min.x + tw / 2), -(bb.min.y + th / 2), 0);
+  const letters = new THREE.MeshPhysicalMaterial({ color: 0xffc85a, metalness: 1, roughness: 0.18, clearcoat: 0.6, emissive: 0x3a2400, emissiveIntensity: 0.6 });
+  const txt = add(geo, letters, 0, 0.26, 0.56, throne); txt.scale.set(k, k, 1);
+  // a black lacquer plaque behind the letters so they read from across the room
+  add(new RoundedBoxGeometry(Math.min(1.26, tw * k + 0.12), 0.3, 0.02, 4, 0.01), new THREE.MeshPhysicalMaterial({ color: 0x050208, roughness: 0.25, clearcoat: 1 }), 0, 0.26, 0.545, throne);
+  const nameLight = new THREE.SpotLight(0xfff0d0, 14, 6, 0.35, 0.6, 1.5); nameLight.position.set(0.6, TOP + 1.6, 3.2); nameLight.target = txt; scene.add(nameLight);
+  return txt;
+}
+
+/* ---------- light ---------- */
+scene.add(new THREE.HemisphereLight(0x2a1450, 0x05020a, 0.12));
+const key = new THREE.SpotLight(0xffe0b0, 120, 20, 0.3, 0.6, 1.6);
+key.position.set(0.6, 7.5, 3.2); key.target.position.set(0, 1.4, -0.2); key.castShadow = true; key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -0.0004;
+scene.add(key, key.target);
+const fill = new THREE.SpotLight(0xffd9a0, 7, 16, 0.5, 0.8, 1.5); fill.position.set(-3, 2.5, 5); fill.target.position.set(0, 1.4, 0); scene.add(fill, fill.target);
+for (const [x, c, i] of [[-3.2, 0xa040ff, 90], [3.2, 0xff40c8, 70]]) { const r = new THREE.SpotLight(c, i, 14, 0.55, 0.7, 1.4); r.position.set(x, 4.2, -2.6); r.target.position.set(0, 1.5, -0.3); scene.add(r, r.target); }
+const crownLight = new THREE.PointLight(0xffd08a, 2.2, 2.2, 2); crownLight.position.set(0.2, TOP + 1.25, 0.65); scene.add(crownLight);
+const gemLight = new THREE.PointLight(0xd05cff, 3, 2.5, 2); gemLight.position.set(0, TOP + 2.8, 0.1); scene.add(gemLight);
+
+// volumetric beam from above onto the throne: a cone with a soft additive falloff
+const beamMat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  uniforms: { c: { value: new THREE.Color(1.0, 0.82, 0.55) } },
+  vertexShader: `varying float vY; varying vec3 vN; varying vec3 vV; void main(){ vY = uv.y; vec4 mv = modelViewMatrix*vec4(position,1.); vN = normalize(normalMatrix*normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix*mv; }`,
+  fragmentShader: `uniform vec3 c; varying float vY; varying vec3 vN; varying vec3 vV; void main(){ float rim = pow(abs(dot(vN, vV)), 2.0); gl_FragColor = vec4(c, 0.16 * rim * smoothstep(0.0, 0.9, vY)); }` });
+const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 1.6, 7.5, 64, 1, true), beamMat);
+beam.position.set(0.35, TOP + 3.4, 0.4); beam.rotation.z = -0.08; scene.add(beam);
+
+// dust in the light
+let seed = +(P.get("seed") || 7); const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+const dust = new THREE.BufferGeometry(), N = 900, pos = new Float32Array(N * 3);
+for (let i = 0; i < N; i++) { pos[i * 3] = (rnd() - 0.5) * 4; pos[i * 3 + 1] = rnd() * 4.5; pos[i * 3 + 2] = (rnd() - 0.5) * 3 + 0.5; }
+dust.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+const sprite = (() => { const c = document.createElement("canvas"); c.width = c.height = 64; const g = c.getContext("2d"); const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, "rgba(255,230,180,1)"); r.addColorStop(1, "rgba(255,230,180,0)"); g.fillStyle = r; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+scene.add(new THREE.Points(dust, new THREE.PointsMaterial({ size: 0.025, map: sprite, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: 0xffd9a0 })));
+
+/* ---------- post: bloom, then grain and vignette ---------- */
+const target = new THREE.WebGLRenderTarget(W, H, { samples: 8, type: THREE.HalfFloatType });
+const composer = new EffectComposer(renderer, target);
+composer.addPass(new RenderPass(scene, camera));
+const bokeh = new BokehPass(scene, camera, { focus: 7.6, aperture: 0.0018, maxblur: 0.006 }); composer.addPass(bokeh);
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.38, 0.5, 0.92));
+composer.addPass(new OutputPass());
+composer.addPass(new ShaderPass({ uniforms: { tDiffuse: { value: null } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+  fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv; float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453); }
+    void main(){ vec4 c = texture2D(tDiffuse, vUv); float v = smoothstep(1.05, 0.35, length((vUv-0.5)*vec2(1.25,1.0))); c.rgb *= mix(0.35, 1.0, v); c.rgb += (h(vUv*1000.)-0.5)*0.035; gl_FragColor = c; }` }));
+
+
+/* ---------- the cinematic ---------- */
+const CINE = P.get("cine");
+let frameAt = null;
+if (CINE) {
+  const VAL = CINE === "val";
+  const ACC = VAL ? 0xff4655 : 0xf0bd4f, ACC_CSS = VAL ? "#ff4655" : "#f0bd4f", SOFT = VAL ? "#ece8e1" : "#ffe7a8";
+  // the crown leaves the throne: keep its place in the world, then move it freely
+  scene.updateMatrixWorld(true); scene.attach(crown);
+  const c0 = crown.position.clone(), s0 = crown.scale.x, r0 = crown.rotation.clone();
+  const target = new THREE.Vector3(0, TOP + 1.42, 1.5);
+  const crownSpot = new THREE.PointLight(VAL ? 0xfff2e6 : 0xffe2a0, 0, 4, 2); scene.add(crownSpot);
+  const rim = new THREE.PointLight(ACC, 0, 5, 2); scene.add(rim);
+  // Valorant: thin angular shards; Mobile Legends: warm sparks. Both burst from behind the crown, then drift.
+  const fx = new THREE.Group(); scene.add(fx);
+  let fs = 21; const fr = () => ((fs = (fs * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const bits = [];
+  for (let i = 0; i < (VAL ? 26 : 90); i++) {
+    const geo = VAL ? new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0.16, 0), new THREE.Vector3(0.035, -0.12, 0), new THREE.Vector3(-0.03, -0.1, 0)]) : new THREE.SphereGeometry(0.012, 8, 6);
+    if (VAL) geo.setIndex([0, 1, 2]);
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: i % 5 === 0 ? 0xece8e1 : ACC, transparent: true, opacity: 0, side: THREE.DoubleSide, toneMapped: false }));
+    const a = fr() * Math.PI * 2, sp = 0.6 + fr() * 1.6;
+    bits.push({ m, dir: new THREE.Vector3(Math.cos(a) * sp, Math.sin(a) * sp * 0.65, -0.2 - fr() * 0.6), spin: (fr() - 0.5) * 1.6, sc: 0.35 + fr() * 0.55 });
+    fx.add(m);
+  }
+  const dimPass = new ShaderPass({ uniforms: { tDiffuse: { value: null }, dim: { value: 0 } },
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float dim; varying vec2 vUv; void main(){ vec4 c = texture2D(tDiffuse, vUv); float d = length(vUv - vec2(.5,.36)); c.rgb *= mix(1.0, smoothstep(.75,.12,d)*.75 + .25, dim); gl_FragColor = c; }` });
+  composer.addPass(dimPass);
+
+  // text, centred under the crown
+  const ov = document.createElement("div"); ov.className = "ov"; document.body.append(ov);
+  const top = Object.assign(document.createElement("div"), { className: "bar" }), bot = Object.assign(document.createElement("div"), { className: "bar" });
+  top.style.top = "0"; bot.style.bottom = "0"; ov.append(top, bot);
+  const box = Object.assign(document.createElement("div"), { className: "txt" }); ov.append(box);
+  const mk = (cls, txt, css = "") => { const e = Object.assign(document.createElement("div"), { className: cls, textContent: txt }); e.style.cssText = css; box.append(e); return e; };
+  const k = mk("k", P.get("head") || (VAL ? "Valorant champions" : "Mobile Legends champions"), `color:${SOFT}`);
+  const n = mk("n", TEAM);
+  const x = P.get("extra") ? mk("x", P.get("extra"), `background:${ACC_CSS}`) : null;
+  const f = P.get("label") ? mk("f", P.get("label"), `color:${SOFT}`) : null;
+  requestAnimationFrame(() => { let z = 150; while (n.scrollWidth > 1700 && z > 60) { z -= 4; n.style.fontSize = z + "px"; } });
+
+  const cl = v => Math.max(0, Math.min(1, v)), eo = v => 1 - Math.pow(1 - cl(v), 3), eio = v => { v = cl(v); return v < .5 ? 4 * v * v * v : 1 - Math.pow(-2 * v + 2, 3) / 2; };
+  const reveal = (e, at, dy = 30) => { const q = eo((tt - at) / 0.6); e.style.opacity = q; e.style.transform = `translateY(${(1 - q) * dy}px)`; };
+  let tt = 0;
+  const camFrom = new THREE.Vector3(1.1, 1.05, 9.4), camTo = new THREE.Vector3(0, 1.55, 7.6), look = new THREE.Vector3(0, 1.75, 0);
+  frameAt = t => {
+    tt = t;
+    // camera: a slow push in, then holds
+    camera.position.lerpVectors(camFrom, camTo, eio(t / 4)); camera.lookAt(look); camera.fov = 30; camera.updateProjectionMatrix();
+    // crown: rests, lifts out (1.4-3.0 s), flies to the centre (3.0-4.6 s), then turns slowly and floats
+    const lift = eio((t - 1.4) / 1.6), fly = eio((t - 3.0) / 1.6);
+    const up = c0.clone().add(new THREE.Vector3(0, 0.75 * lift, 0.25 * lift));
+    crown.position.lerpVectors(up, target, fly);
+    crown.position.y += Math.sin(Math.max(0, t - 4.6) * 1.3) * 0.025 * fly;
+    crown.scale.setScalar(s0 * (1 + 0.45 * fly));
+    crown.rotation.set(r0.x * (1 - fly) + 0.12 * fly, r0.y + lift * 0.6 + Math.max(0, t - 2.2) * 0.62, r0.z * (1 - fly));
+    crownSpot.position.copy(crown.position).add(new THREE.Vector3(0.3, 0.6, 0.9)); crownSpot.intensity = 6 * eo((t - 1.2) / 1);
+    rim.position.copy(crown.position).add(new THREE.Vector3(0, 0.1, -0.8)); rim.intensity = 10 * eo((t - 3.4) / 1);
+    bokeh.uniforms.focus.value = camera.position.distanceTo(crown.position);
+    dimPass.uniforms.dim.value = eo((t - 3.6) / 1.2);
+    // effects burst when the crown arrives
+    const b = Math.max(0, t - 4.2);
+    for (const p of bits) {
+      p.m.position.copy(target).addScaledVector(p.dir, VAL ? Math.min(b * 0.7, 1.3) + b * 0.05 : b * 0.3).add(new THREE.Vector3(0, VAL ? 0 : b * 0.12, -0.6));
+      p.m.rotation.z = p.spin * b; p.m.scale.setScalar(p.sc);
+      p.m.material.opacity = b ? cl(b * 3) * (VAL ? 0.9 : 0.8) * (1 - cl((b - 6) / 4) * 0.5) : 0;
+    }
+    top.style.transform = `translateY(${-(1 - eo(t / 0.8)) * 84}px)`; bot.style.transform = `translateY(${(1 - eo(t / 0.8)) * 84}px)`;
+    reveal(k, 4.4); reveal(n, 4.7, 50); if (x) reveal(x, 5.3, 20); if (f) reveal(f, 5.6, 10);
+    composer.render();
+  };
+  window.frameAt = frameAt;
+}
+window.ready = (async () => { await nameplate(); if (CINE) frameAt(0); else { composer.render(); composer.render(); } return true; })();
+window.shot = (q = 0.93) => { composer.render(); return renderer.domElement.toDataURL("image/jpeg", q); };
+</script>

@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Ready Player SITE stream screens</title>
+<!-- Ready Player SITE livestream screens, built on Jhems's RPS v2 designs: the violet perspective tunnel (rectangles
+     flowing toward the viewer, laser streaks along the rays, drifting katakana, falling code), the neon code cube, the
+     READY PLAYER SITE wordmark and neon type. Words come from the URL hash (JhemsStream edits them).
+     kind=main      title sub games=1 (cube centre, big title; no title = the wordmark)
+     kind=side      title1 title2 sub timer=none|until|count until=HH:MM count=MIN timerLabel bar=label games=1
+     kind=vs        game label a b sub
+     kind=alert     game title sub (ticker bands, glitch title: match point, tactical pause)
+     kind=win       game team extra label (sunburst, confetti, <<< WINS! >>>)
+     kind=advance   game team sub label (no sunburst, no confetti)
+     kind=standings game title l1..l5 t1..t5
+     kind=casters   game n1 n2 (two see-through camera windows)
+     frameAt(t) renders any moment, so the PNG and video exports come from this same page (?render=1). -->
+<style>
+@font-face{font-family:"RPS";src:url(audiowide.woff2) format("woff2")}
+:root{--acc:#c86bff;--glow:#b44cff}
+html,body{margin:0;background:transparent;overflow:hidden}
+.stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;font-family:"RPS","Bahnschrift",sans-serif;color:#fff;text-transform:uppercase}
+canvas{position:absolute;inset:0}
+img{position:absolute;display:block}
+.neon{color:#fff;text-shadow:0 0 6px #fff,0 0 18px var(--glow),0 0 42px var(--glow),0 0 80px var(--glow)}
+.accent{color:var(--acc);text-shadow:0 0 10px var(--acc),0 0 30px var(--acc)}
+.lbl{font-size:30px;letter-spacing:.22em}
+.ctr{position:absolute;left:0;right:0;text-align:center;white-space:nowrap}
+.box{position:absolute;display:grid;place-items:center;border:3px solid #fff;border-radius:14px;background:rgba(14,4,30,.72);box-shadow:0 0 14px var(--b),inset 0 0 14px var(--b)}
+.box .n{font-size:64px;white-space:nowrap}
+.box .tag{position:absolute;top:-38px;font-size:22px;letter-spacing:.2em}
+.pill{display:inline-block;padding:10px 22px 8px;border:2px solid var(--c);border-radius:40px;color:var(--c);font-size:22px;letter-spacing:.12em;text-shadow:0 0 10px var(--c);box-shadow:0 0 12px var(--c)}
+.ticker{position:absolute;left:0;right:0;height:46px;background:rgba(40,6,30,.7);border-top:2px solid var(--acc);border-bottom:2px solid var(--acc);overflow:hidden;white-space:nowrap;font-size:26px;line-height:46px;color:var(--acc);text-shadow:0 0 8px var(--acc)}
+.row{position:absolute;left:360px;width:1200px;height:86px;display:grid;grid-template-columns:330px 1fr;align-items:center;border:2px solid rgba(255,255,255,.75);border-radius:12px;background:rgba(14,4,30,.7)}
+.row .p{padding-left:28px;font-size:22px;letter-spacing:.16em;color:#d9c6ff}
+.row .t{font-size:46px;white-space:nowrap}
+.row.first{height:118px;border-color:var(--acc);box-shadow:0 0 18px var(--acc),inset 0 0 18px var(--acc)}
+.row.first .p{color:var(--acc)}
+.row.first .t{font-size:66px}
+.cam{position:absolute;top:250px;width:800px;height:450px;border:3px solid #fff;border-radius:6px;box-shadow:0 0 16px var(--glow)}
+</style>
+<div class="stage" id="stage"><canvas id="cv" width="1920" height="1080"></canvas></div>
+<script>
+"use strict";
+const P = Object.fromEntries(new URLSearchParams(location.hash.slice(1) || location.search.slice(1)));
+const stage = document.getElementById("stage"), cv = document.getElementById("cv"), g = cv.getContext("2d");
+const W = 1920, H = 1080, VX = 960, VY = 520;
+const fit = () => { stage.style.transform = `scale(${innerWidth / W},${innerHeight / H})`; };
+addEventListener("resize", fit); fit();
+const game = (P.game || "").toLowerCase();
+const ACC = game.includes("valorant") ? "#ff4d6d" : game.includes("mobile") ? "#ffd84a" : "#d98bff";
+const GLOW = game.includes("valorant") ? "#ff2a55" : game.includes("mobile") ? "#ffb020" : "#b44cff";
+document.documentElement.style.setProperty("--acc", ACC); document.documentElement.style.setProperty("--glow", GLOW);
+const el = (tag, cls, txt, css, parent = stage) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; if (css) e.style.cssText = css; parent.append(e); return e; };
+const img = (src, css) => { const i = el("img", "", null, css); i.src = src; i.alt = ""; return i; };
+const cl = v => Math.max(0, Math.min(1, v)), eo = v => 1 - Math.pow(1 - cl(v), 3);
+let seed = 7; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+const ins = []; const enter = (e, at, dy = 24) => { ins.push([e, at, dy]); return e; };
+const fitText = (node, maxW) => { const r = document.createRange(), k = innerWidth / W || 1; let s = parseFloat(getComputedStyle(node).fontSize); const wide = () => { r.selectNodeContents(node); return r.getBoundingClientRect().width / k; }; while (wide() > maxW && s > 24) { s -= 3; node.style.fontSize = s + "px"; } };
+const GLYPHS = "アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン0123456789<>=+*".split("");
+const kind = P.kind || "main";
+
+/* ---------- the tunnel ---------- */
+const rays = Array.from({ length: 44 }, (_, i) => { const a = i / 44 * Math.PI * 2 + 0.03; return [VX + Math.cos(a) * 2400, VY + Math.sin(a) * 1500]; });
+const streaks = Array.from({ length: 26 }, (_, i) => ({ at: i * 0.31 + rnd() * 0.3, ray: Math.floor(rnd() * rays.length), len: 90 + rnd() * 160, blue: rnd() < 0.5, dur: 0.7 + rnd() * 0.6 }));
+const floaters = Array.from({ length: 24 }, () => ({ x: 60 + rnd() * 1800, y: 60 + rnd() * 960, ch: GLYPHS[Math.floor(rnd() * GLYPHS.length)], s: 26 + rnd() * 30, ph: rnd() * 8, vy: -4 - rnd() * 10 }));
+const columns = Array.from({ length: 14 }, (_, i) => ({ x: (i < 7 ? 70 + i * 60 : 1490 + (i - 7) * 55) + rnd() * 20, v: 30 + rnd() * 40, o: rnd() * 600, n: 14 + Math.floor(rnd() * 12) }));
+const stars = Array.from({ length: 90 }, () => [rnd() * W, rnd() * H, rnd() * 6.28, 0.6 + rnd() * 1.4]);
+const holes = [];
+function tunnel(t, tint) {
+  const bg = g.createRadialGradient(VX, VY, 40, VX, VY, 1150); bg.addColorStop(0, tint ? "#4a1250" : "#3d1786"); bg.addColorStop(0.55, tint ? "#2a0a36" : "#260b5c"); bg.addColorStop(1, "#12052a");
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  g.lineWidth = 1; g.strokeStyle = "rgba(150,100,235,.22)";
+  for (const [x, y] of rays) { g.beginPath(); g.moveTo(VX, VY); g.lineTo(x, y); g.stroke(); }
+  g.strokeStyle = "rgba(150,100,235,.14)";
+  for (const y of [245, 820]) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+  for (const x of [470, 1450]) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
+  // rectangles flowing toward the viewer: the tunnel moves
+  for (let i = 0; i < 9; i++) {
+    const d = ((i / 9) + t * 0.06) % 1, k = 0.06 + Math.pow(d, 2.3) * 1.35, w = 915 * k * 1.25, h = 485 * k * 1.25;
+    g.strokeStyle = `rgba(206,90,230,${0.06 + 0.35 * d * (1 - Math.max(0, d - 0.85) * 6)})`; g.lineWidth = 1 + d * 1.4;
+    g.strokeRect(VX - w / 2, VY - h / 2, w, h);
+  }
+  g.strokeStyle = "rgba(225,95,235,.85)"; g.lineWidth = 2; g.shadowColor = "#d14bff"; g.shadowBlur = 10; g.strokeRect(VX - 457, VY - 300, 915, 485 + 115); g.shadowBlur = 0;
+  // the double outer frame
+  g.strokeStyle = "rgba(190,140,255,.35)"; g.lineWidth = 1.5; g.strokeRect(26, 26, W - 52, H - 52); g.strokeRect(40, 40, W - 80, H - 80);
+  for (const [x, y, ph, r] of stars) { g.fillStyle = `rgba(255,255,255,${0.25 + 0.35 * (0.5 + 0.5 * Math.sin(t * 2 + ph))})`; g.fillRect(x, y, r, r); }
+  // faint falling code at the sides
+  g.font = '18px "MS Gothic",Consolas,monospace'; g.textAlign = "center";
+  for (const c of columns) for (let j = 0; j < c.n; j++) { const y = ((c.o + t * c.v + j * 22) % 1150) - 40; g.fillStyle = `rgba(200,170,255,${0.05 + 0.1 * (j / c.n)})`; g.fillText(GLYPHS[(j * 7 + Math.floor(t * 2)) % GLYPHS.length], c.x, y); }
+  // big glyphs drifting and fading
+  for (const f of floaters) { const a = 0.5 + 0.5 * Math.sin(t * 0.6 + f.ph); g.font = `${f.s}px "MS Gothic","Yu Gothic",sans-serif`; g.fillStyle = `rgba(235,220,255,${0.15 + 0.45 * a})`; g.fillText(f.ch, f.x, f.y + f.vy * t % 200); }
+  // laser streaks shooting outward along the rays
+  for (const s of streaks) {
+    const loop = 26 * 0.31 + 0.6, tt = ((t - s.at) % loop + loop) % loop; if (tt > s.dur) continue;
+    const [rx, ry] = rays[s.ray], p = tt / s.dur, d0 = 0.08 + p * 0.9, d1 = d0 + s.len / 1800;
+    g.strokeStyle = s.blue ? "rgba(110,120,255,.9)" : "rgba(255,80,220,.9)"; g.lineWidth = 2.4; g.shadowColor = g.strokeStyle; g.shadowBlur = 12;
+    g.beginPath(); g.moveTo(VX + (rx - VX) * d0 * 0.45, VY + (ry - VY) * d0 * 0.45); g.lineTo(VX + (rx - VX) * d1 * 0.45, VY + (ry - VY) * d1 * 0.45); g.stroke(); g.shadowBlur = 0;
+  }
+  const v = g.createRadialGradient(VX, VY, 500, VX, VY, 1200); v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(5,0,15,.55)"); g.fillStyle = v; g.fillRect(0, 0, W, H);
+  for (const [x, y, w, h] of holes) g.clearRect(x, y, w, h);
+}
+
+/* ---------- the code cube ---------- */
+const faceGlyphs = Array.from({ length: 6 }, () => Array.from({ length: 30 }, () => [rnd() * 1.8 - 0.9, rnd() * 1.8 - 0.9, GLYPHS[Math.floor(rnd() * GLYPHS.length)]]));
+const ring = Array.from({ length: 34 }, (_, i) => [i / 34 * Math.PI * 2, GLYPHS[Math.floor(rnd() * GLYPHS.length)]]);
+function cube(t, cx, cy, s, alpha = 1, label) {
+  const ry = t * 0.42 + 0.7, rx = -0.38 + Math.sin(t * 0.3) * 0.08, rz = Math.sin(t * 0.22) * 0.06;
+  const rot = ([x, y, z]) => { let c = Math.cos(ry), sn = Math.sin(ry); [x, z] = [x * c + z * sn, -x * sn + z * c]; c = Math.cos(rx); sn = Math.sin(rx); [y, z] = [y * c - z * sn, y * sn + z * c]; c = Math.cos(rz); sn = Math.sin(rz); [x, y] = [x * c - y * sn, x * sn + y * c]; return [x, y, z]; };
+  const pr = ([x, y, z]) => { const k = 7 / (7 - z); return [cx + x * s * k, cy + y * s * k, z]; };
+  g.save(); g.globalAlpha = alpha;
+  // core light
+  const core = g.createRadialGradient(cx, cy, 0, cx, cy, s * 1.2); core.addColorStop(0, "rgba(230,150,255,.75)"); core.addColorStop(0.25, "rgba(170,80,255,.3)"); core.addColorStop(1, "rgba(120,40,220,0)");
+  g.fillStyle = core; g.fillRect(cx - s * 1.6, cy - s * 1.6, s * 3.2, s * 3.2);
+  // glyphs on the faces
+  const F = [[0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]];
+  g.textAlign = "center"; g.textBaseline = "middle";
+  F.forEach((n, fi) => {
+    for (const [u, v, ch] of faceGlyphs[fi]) {
+      const p = n[2] ? [u, v, n[2]] : n[0] ? [n[0], v, u] : [u, n[1], v];
+      const [x, y, z] = pr(rot(p)); g.font = `${Math.round(s * 0.13)}px "MS Gothic",Consolas,monospace`;
+      g.fillStyle = `rgba(240,225,255,${0.25 + 0.4 * cl((z + 1) / 2)})`; g.fillText(ch, x, y);
+    }
+  });
+  // an inner turning square
+  const inner = [[-.42, -.42, 0], [.42, -.42, 0], [.42, .42, 0], [-.42, .42, 0]].map(p => { const a = t * 0.9, [x, y] = [p[0] * Math.cos(a) - p[1] * Math.sin(a), p[0] * Math.sin(a) + p[1] * Math.cos(a)]; return pr(rot([x, y, .15])); });
+  g.strokeStyle = "rgba(190,150,255,.55)"; g.lineWidth = 1.5; g.beginPath(); inner.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.stroke();
+  // edges: blue on the horizontals, magenta on the verticals, white vertex squares
+  const V = [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]].map(v => pr(rot(v)));
+  const E = [[0, 1, 0], [1, 2, 1], [2, 3, 0], [3, 0, 1], [4, 5, 0], [5, 6, 1], [6, 7, 0], [7, 4, 1], [0, 4, 0], [1, 5, 0], [2, 6, 0], [3, 7, 0]];
+  for (const [a, b, vert] of E) {
+    g.strokeStyle = vert ? "#ff4fd8" : "#5f7bff"; g.lineWidth = 3; g.shadowColor = g.strokeStyle; g.shadowBlur = 18;
+    g.beginPath(); g.moveTo(V[a][0], V[a][1]); g.lineTo(V[b][0], V[b][1]); g.stroke();
+  }
+  g.shadowBlur = 0; g.fillStyle = "#fff";
+  for (const v of V) g.fillRect(v[0] - 4, v[1] - 4, 8, 8);
+  for (const [a, b] of E) { const m = [(V[a][0] + V[b][0]) / 2, (V[a][1] + V[b][1]) / 2]; g.beginPath(); g.arc(m[0], m[1], 2.4, 0, 6.28); g.fill(); }
+  // the orbiting ring of glyphs
+  g.font = `${Math.round(s * 0.14)}px "MS Gothic",Consolas,monospace`;
+  for (const [a0, ch] of ring) { const a = a0 + t * 0.5, x = cx + Math.cos(a) * s * 1.65, y = cy + Math.sin(a) * s * 0.45 + Math.cos(a) * s * 0.18; g.fillStyle = `rgba(225,205,255,${0.25 + 0.35 * (0.5 + 0.5 * Math.sin(a))})`; g.fillText(ch, x, y); }
+  if (label) { g.font = `${Math.round(s * 0.62)}px RPS,"Bahnschrift",sans-serif`; g.fillStyle = "#fff"; g.shadowColor = GLOW; g.shadowBlur = 24; g.fillText(label, cx, cy + 4); g.shadowBlur = 0; }
+  g.restore();
+}
+
+/* ---------- sunburst and confetti for the win screens ---------- */
+const confetti = Array.from({ length: 160 }, () => ({ x: rnd() * W, y: rnd() * H, v: 30 + rnd() * 70, w: 4 + rnd() * 6, h: 8 + rnd() * 10, a: rnd() * 6.28, vr: (rnd() - .5) * 4, c: ["#ffd84a", "#ff4fd8", "#5f7bff", "#ffffff", "#ff4d6d"][Math.floor(rnd() * 5)] }));
+function sunburst(t) {
+  g.save(); g.translate(VX, 560); g.rotate(t * 0.05);
+  for (let i = 0; i < 28; i++) { g.rotate(Math.PI * 2 / 28); g.fillStyle = i % 2 ? "rgba(140,60,220,.16)" : "rgba(255,80,200,.07)"; g.beginPath(); g.moveTo(0, 0); g.lineTo(1500, -95); g.lineTo(1500, 95); g.closePath(); g.fill(); }
+  g.restore();
+}
+function confettiFx(t) {
+  for (const c of confetti) { const y = (c.y + t * c.v) % (H + 40) - 20, x = c.x + Math.sin(t + c.a) * 20; g.save(); g.translate(x, y); g.rotate(c.a + t * c.vr); g.fillStyle = c.c; g.globalAlpha = 0.85; g.fillRect(-c.w / 2, -c.h / 2, c.w, c.h * Math.abs(Math.cos(t * 3 + c.a))); g.restore(); }
+}
+
+/* ---------- layouts (each from the RPS v2 screen it's based on) ---------- */
+const topMark = () => img("site-title.png", "left:50%;top:58px;height:46px;transform:translateX(-50%);filter:drop-shadow(0 0 10px #c76bff)");
+img("site-esports.png", "left:56px;bottom:58px;height:34px;filter:drop-shadow(0 0 8px #b44cff)");
+img("site-logo.png", "right:60px;bottom:50px;height:58px");
+let fx = t => cube(t, VX, 470, 175, eo(t / 0.8));
+let tinted = false;
+const games = (y) => { const d = el("div", "ctr lbl", null, `top:${y}px`); d.innerHTML = `<span style="color:#ff4d6d;text-shadow:0 0 12px #ff2a55">VALORANT</span> &nbsp;·&nbsp; <span style="color:#ffd84a;text-shadow:0 0 12px #ffb020">MOBILE LEGENDS: BANG BANG</span>`; return enter(d, 1.0); };
+
+if (kind === "main") {   // 01 Main Bumper
+  if (P.title) { const t1 = enter(el("div", "ctr neon", P.title, "top:670px;font-size:120px"), 0.4); requestAnimationFrame(() => fitText(t1, 1700)); }
+  else enter(img("site-title.png", "left:50%;top:670px;width:1320px;transform:translateX(-50%);filter:drop-shadow(0 0 16px #d07bff) drop-shadow(0 0 40px #9a3cff)"), 0.4);
+  if (P.sub) enter(el("div", "ctr neon", P.sub, "top:822px;font-size:58px"), 0.7);
+  if (P.games !== "0") games(912);
+  fx = t => cube(t, VX, 440, 190, eo(t / 0.8));
+} else if (kind === "side") {   // 02 Starting Soon
+  const col = el("div", "", null, "position:absolute;left:1020px;right:90px;top:250px");
+  enter(img("site-title.png", "position:relative;height:40px;filter:drop-shadow(0 0 10px #c76bff)"), 0.2); col.append(stage.lastChild);
+  enter(el("div", "neon", P.title1 || "Stream", "font-size:96px;margin-top:22px", col), 0.4);
+  enter(el("div", "neon", P.title2 || "Starting soon", "font-size:84px;margin-top:4px", col), 0.55);
+  if (P.sub) enter(el("div", "", P.sub, "font-family:Bahnschrift,sans-serif;text-transform:none;font-size:30px;color:#eadcff;margin-top:26px", col), 0.75);
+  const tm = enter(el("div", "", null, "margin-top:22px;font-size:76px", col), 0.85);
+  const tl = el("div", "lbl", null, "font-size:18px;color:#d9c6ff;margin-top:4px", col);
+  const bl = enter(el("div", "lbl", P.bar || "Initializing bracket", "font-size:18px;color:#eadcff;margin-top:26px", col), 0.95);
+  const track = el("div", "", null, "height:6px;margin-top:10px;background:rgba(255,255,255,.12);width:640px", col), fill = el("div", "", null, "height:100%;width:0;background:linear-gradient(90deg,#ff4fd8,#c86bff);box-shadow:0 0 12px #ff4fd8", track);
+  const pills = enter(el("div", "", null, "margin-top:34px;display:flex;gap:18px", col), 1.1);
+  if (P.games !== "0") pills.innerHTML = `<span class="pill" style="--c:#ff4d6d">Valorant</span><span class="pill" style="--c:#ffd84a">Mobile Legends: Bang Bang</span>`;
+  const timerText = () => {
+    const mode = P.timer || (P.until ? "until" : "none"); if (mode === "none") return null;
+    let left; if (mode === "until") { const [hh, mm] = (P.until || "15:30").split(":").map(Number), now = new Date(), tt = new Date(now); tt.setHours(hh, mm || 0, 0, 0); left = Math.round((tt - now) / 1000); }
+    else { window.__end ??= Date.now() + (+P.count || 10) * 60000; left = Math.round((window.__end - Date.now()) / 1000); }
+    if (left <= 0) return ["Any moment", ""];
+    const h = Math.floor(left / 3600), p2 = n => String(n).padStart(2, "0");
+    return [(h ? h + ":" : "") + p2(Math.floor(left / 60) % 60) + ":" + p2(left % 60), P.timerLabel || "Until we go live"];
+  };
+  const tick = () => { const x = timerText(); tm.style.display = tl.style.display = x ? "" : "none"; if (x) { tm.textContent = x[0]; tm.className = "neon"; tl.textContent = x[1]; } };
+  tick(); setInterval(tick, 1000);
+  fx = t => { fill.style.width = (((t * 0.12) % 1) * 100) + "%"; cube(t, 560, 500, 210, eo(t / 0.8)); };
+} else if (kind === "vs") {   // 04/05 Up Next
+  topMark();
+  enter(el("div", "ctr accent lbl", P.label || "Up next", "top:150px;font-size:28px"), 0.2);
+  const gt = enter(el("div", "ctr neon", P.game || "Up next", `top:200px;font-size:128px;--glow:${GLOW}`), 0.35); gt.style.color = "#fff";
+  const mk = (x, side, name, col) => { const b = enter(el("div", "box", null, `left:${x}px;top:520px;width:560px;height:136px;border-color:${col};--b:${col}`), 0.6); el("span", "tag", side, `left:${x < 900 ? 20 : "auto"}px;right:${x < 900 ? "auto" : "20px"};color:${col}`, b); const n = el("span", "n neon", name, `--glow:${col}`, b); requestAnimationFrame(() => fitText(n, 500)); };
+  mk(170, "Team 1", P.a || "TBA", "#ff4d6d"); mk(1190, "Team 2", P.b || "TBA", "#ffffff");
+  if (P.sub) enter(el("div", "ctr lbl", P.sub, "top:790px;font-size:24px;color:#eadcff"), 0.9);
+  fx = t => cube(t, VX, 588, 110, eo((t - 0.4) / 0.6), "VS");
+} else if (kind === "alert") {   // 08 Match Point
+  tinted = true; topMark();
+  enter(el("div", "ctr lbl", P.game || "", "top:120px;font-size:26px;color:#eadcff"), 0.2);
+  for (const y of [180, 600]) { const tk = el("div", "ticker", null, `top:${y}px`); const s = el("div", "", null, "display:inline-block", tk); s.textContent = Array(16).fill((P.title || "Match point") + "  ·  ").join(""); tk.dataset.ticker = y === 180 ? "1" : "-1"; }
+  const tt = enter(el("div", "ctr neon", P.title || "Match point", "top:330px;font-size:150px"), 0.3); requestAnimationFrame(() => fitText(tt, 1700));
+  if (P.sub) enter(el("div", "ctr lbl", P.sub, "top:510px;font-size:32px"), 0.6);
+  fx = t => { cube(t, VX, 410, 120, 0.55); stage.querySelectorAll(".ticker").forEach(k => { k.firstChild.style.transform = `translateX(${(+k.dataset.ticker) * (-(t * 90) % 600)}px)`; });
+    const gl = Math.floor(t * 10) % 23 === 0; tt.style.transform = gl ? `translateX(${(rnd() - .5) * 24}px) skewX(-8deg)` : "none"; tt.style.textShadow = gl ? "-6px 0 #ff2a55,6px 0 #5f7bff,0 0 30px #ff2a55" : ""; };
+} else if (kind === "win" || kind === "advance") {   // 11 STICK-O Wins
+  const win = kind === "win"; topMark();
+  enter(el("div", "ctr accent lbl", [P.game, win ? "Match result" : P.label || "Match result"].filter(Boolean).join(" · "), "top:150px;font-size:26px"), 0.2);
+  const tn = enter(el("div", "ctr neon", P.team || "Team", `top:450px;font-size:180px;--glow:${GLOW}`), 0.5); requestAnimationFrame(() => fitText(tn, 1700));
+  const w = enter(el("div", "ctr accent", null, "top:680px;font-size:64px;letter-spacing:.16em"), 0.9);
+  w.textContent = win ? "‹‹‹  Wins!  ›››" : (P.sub || "Advances to the Grand Finals");
+  if (!win) w.style.fontSize = "40px";
+  if (P.extra) enter(el("div", "ctr", null, "top:790px"), 1.2).innerHTML = `<span class="pill" style="--c:#fff;font-size:44px;padding:12px 40px 10px">${P.extra.replace(/[<&>]/g, "")}</span>`;
+  if (win && P.label) enter(el("div", "ctr lbl", P.label, "top:890px;font-size:20px;color:#eadcff"), 1.4);
+  fx = t => { if (win) { sunburst(t); confettiFx(t); } cube(t, VX, 330, 105, eo(t / 0.8)); };
+} else if (kind === "standings") {
+  topMark();
+  enter(el("div", "ctr accent lbl", P.game || "", "top:150px;font-size:26px"), 0.2);
+  enter(el("div", "ctr neon", P.title || "Final standings", "top:200px;font-size:96px"), 0.35);
+  const rows = [1, 2, 3, 4, 5].map(i => [P["l" + i], P["t" + i]]).filter(([l]) => l);
+  let y = rows.length > 3 ? 360 : 400;
+  rows.forEach(([l, tm], i) => { const r = el("div", `row${i === 0 ? " first" : ""}`, null, `top:${y}px`); el("span", "p", l, "", r); el("span", "t neon", tm || "TBA", "", r); enter(r, 0.6 + (rows.length - 1 - i) * 0.45, 0); y += i === 0 ? 136 : 104; });
+  fx = () => {};
+} else if (kind === "casters") {
+  topMark();
+  enter(el("div", "ctr accent lbl", [P.game, "Shoutcasters"].filter(Boolean).join(" · "), "top:160px;font-size:26px"), 0.2);
+  for (const [x, n] of [[120, P.n1], [1000, P.n2]]) { holes.push([x, 250, 800, 450]); enter(el("div", "cam", null, `left:${x - 3}px`), 0.3, 0); enter(el("div", "neon", n || "Caster", `position:absolute;left:${x}px;width:800px;top:728px;text-align:center;font-size:48px`), 0.55); el("div", "lbl", "Shoutcaster", `position:absolute;left:${x}px;width:800px;top:792px;text-align:center;font-size:18px;color:#d9c6ff`); }
+  fx = () => {};
+}
+
+/* ---------- one frame at time t ---------- */
+function frame(t) {
+  tunnel(t, tinted);
+  if (tinted && Math.floor(t * 2) % 2 === 0) { g.fillStyle = `rgba(255,40,90,${0.06 + 0.04 * Math.sin(t * 6)})`; g.fillRect(0, 0, W, H); }
+  fx(t);
+  for (const [e, at, dy] of ins) { const k = eo((t - at) / 0.7); e.style.opacity = k; if (!e.matches(".ctr.neon[style*='top:330px']")) e.style.translate = `0 ${dy * (1 - k)}px`; }
+}
+window.frameAt = t => frame(t);
+let t0 = performance.now(), running = true;
+if (P.render !== "1") {
+  const loop = () => { if (running) frame((performance.now() - t0) / 1000); requestAnimationFrame(loop); }; loop();
+  addEventListener("obsSourceVisibleChanged", e => { running = !!e.detail?.visible; });
+  addEventListener("obsSourceActiveChanged", e => { if (e.detail?.active) t0 = performance.now(); });
+} else document.fonts.ready.then(() => frame(+(P.t || 6)));
+</script>
+</html>

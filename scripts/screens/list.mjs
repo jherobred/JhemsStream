@@ -1,0 +1,25 @@
+// The stream screens for the Ready Player SITE finals, by scene, with the words each one shows.
+// Layouts follow Jhems's RPS v2 screens (Main Bumper, Starting Soon, Up Next, Match Point, Wins).
+export const SCREENS = [
+  { id: "01_Starting_Soon", q: { kind: "side", title1: "Stream", title2: "Starting soon", sub: "Grab your snacks. The finals begin shortly.", timer: "until", until: "15:30", bar: "Initializing bracket" } },
+  { id: "02_Welcome_Finals_Day", q: { kind: "main", sub: "Esports Finals" } },
+  { id: "03_ML_M15_Up_Next", q: { kind: "vs", game: "Mobile Legends", label: "Up next · Match 15", a: "Gxt", b: "GHETTOBOYS", sub: "Lower bracket final · Winner meets Esmiring Hi" } },
+  { id: "04_ML_M15_Casters", q: { kind: "casters", game: "Mobile Legends", n1: "Jay Gervacio", n2: "Charles Bagus" } },
+  { id: "08_ML_M15_Gxt_Advances", q: { kind: "advance", game: "Mobile Legends", label: "Match 15", team: "Gxt", sub: "Advances to the Grand Finals" } },
+  { id: "09_ML_M15_GHETTOBOYS_Advances", q: { kind: "advance", game: "Mobile Legends", label: "Match 15", team: "GHETTOBOYS", sub: "Advances to the Grand Finals" } },
+  { id: "10_VAL_Finals_Up_Next", q: { kind: "vs", game: "Valorant", label: "Up next · Match 22", a: "ITeletubbies", b: "Stick-O", sub: "Championship finals · 5v5 tactical shooter" } },
+  { id: "11_VAL_Finals_Casters", q: { kind: "casters", game: "Valorant", n1: "Leoj Zamora", n2: "Abe Policarpio" } },
+  { id: "15_VAL_Tactical_Pause", q: { kind: "alert", game: "Valorant", title: "Tactical pause", sub: "Match resumes shortly" } },
+  { id: "16_WIN_ITeletubbies_Valorant_Champions", q: { kind: "win", game: "Valorant", team: "ITeletubbies", extra: "MAXX WIN!!", label: "Match 22 · Valorant Champions" } },
+  { id: "17_WIN_Stick-O_Valorant_Champions", q: { kind: "win", game: "Valorant", team: "Stick-O", label: "Match 22 · Valorant Champions" } },
+  { id: "18_ML_Finals_Up_Next", q: { kind: "vs", game: "Mobile Legends", label: "Up next · Match 16", a: "Esmiring Hi", b: "Winner of Match 15", sub: "Championship finals" } },
+  { id: "19_ML_Finals_Casters", q: { kind: "casters", game: "Mobile Legends", n1: "Jay Gervacio", n2: "Charles Bagus" } },
+  { id: "23_WIN_Esmiring_Hi_ML_Champions", q: { kind: "win", game: "Mobile Legends", team: "Esmiring Hi", label: "Match 16 · Mobile Legends Champions" } },
+  { id: "24_WIN_Gxt_ML_Champions", q: { kind: "win", game: "Mobile Legends", team: "Gxt", label: "Match 16 · Mobile Legends Champions" } },
+  { id: "25_WIN_GHETTOBOYS_ML_Champions", q: { kind: "win", game: "Mobile Legends", team: "GHETTOBOYS", label: "Match 16 · Mobile Legends Champions" } },
+  { id: "26_VAL_Final_Standings", q: { kind: "standings", game: "Valorant", title: "Final standings", l1: "Champions", t1: "TBA", l2: "1st Runner-up", t2: "TBA", l3: "2nd Runner-up", t3: "TBA" } },
+  { id: "27_ML_Final_Standings", q: { kind: "standings", game: "Mobile Legends", title: "Final standings", l1: "Champions", t1: "TBA", l2: "1st Runner-up", t2: "TBA", l3: "2nd Runner-up", t3: "TBA", l4: "3rd Runner-up", t4: "TBA", l5: "4th Runner-up", t5: "TBA" } },
+  { id: "29_Be_Right_Back", q: { kind: "main", title: "Be right back", sub: "Stay tuned" } },
+  { id: "30_Technical_Difficulties", q: { kind: "main", title: "Technical difficulties", sub: "Please stand by" } },
+  { id: "31_Thanks_For_Watching", q: { kind: "main", title: "Thanks for watching", sub: "Congratulations to every team" } },
+];

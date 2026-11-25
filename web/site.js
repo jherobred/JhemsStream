@@ -1,7 +1,7 @@
 "use strict";
 /* Ready Player SITE finals preset. One button builds every screen the event needs, in the order of the stream
-   (from the run sheet "READY PLAYER SITE FLOW"): bumpers, match cards, casters, gameplay borders, win screens on the
-   throne, final standings, replay, plus SOURCE scenes the crew fills once (game feeds, cameras) that every border
+   (from the run sheet "READY PLAYER SITE FLOW"): bumpers, match cards, casters, gameplay borders, win screens,
+   final standings, replay, plus SOURCE scenes the crew fills once (game feeds, cameras) that every border
    reuses. Safe to press again: scenes that already exist are left alone. Also: "Edit screen text" for any SITE screen
    and "Load match" buttons for the scoreboard. Needs window.JS, Borders, Editor, Replay, Transitions. */
 (() => {
@@ -20,46 +20,48 @@
   const CHAT = "SITE Live Chat";
   const ML_CASTERS = ["Jay Gervacio", "Charles Bagus"], VAL_CASTERS = ["Leoj Zamora", "Abe Policarpio"];
   const slug = t => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const win = (n, team, game, mode, label, extra) => ({ name: n, type: "screen", q: { kind: "win", img: `${mode === "advance" ? "advance" : "win"}-${slug(team)}.jpg`, game, mode,
-    head: mode === "advance" ? "Advances to the Grand Finals" : "Champions", team, label, ...(extra ? { extra } : {}) } });
-  const up = (n, m, bg) => ({ name: n, type: "screen", q: { kind: "bumper", bg, game: m.game, label: m.label, a: m.a, b: m.b, sub: "Up next" } });
-  const casters = (n, c) => ({ name: n, type: "border", tpl: "casters", fills: { cam1: SRC.cast1, cam2: SRC.cast2 }, plates: { n1: c[0], n2: c[1] } });
+  /* full-page stream screens (screens.html, the approved RPS v5 look); casters get two camera windows under the page */
+  const scr = (name, q) => ({ name, type: "screen", q });
+  const win = (n, team, game, label, extra) => scr(n, { kind: "win", game, team, label, ...(extra ? { extra } : {}) });
+  const adv = (n, team) => scr(n, { kind: "advance", game: "Mobile Legends", label: "Match 15", team, sub: "Advances to the Grand Finals" });
+  const up = (n, m, label, sub) => scr(n, { kind: "vs", game: m.game, label, a: m.a, b: m.b, sub });
+  const casters = (n, game, c) => ({ name: n, type: "screen", q: { kind: "casters", game, n1: c[0], n2: c[1] }, cams: [SRC.cast1, SRC.cast2] });
+  const HOLES = [{ x: 120, y: 250, w: 800, h: 450 }, { x: 1000, y: 250, w: 800, h: 450 }];
 
   /* the show, in order */
   const SCENES = [
-    { name: "01 · Starting Soon", type: "screen", q: { kind: "bumper", bg: 2, kicker: "Ready Player SITE · Esports Finals", title: "Starting Soon", until: "15:30", lines: SCHEDULE } },
-    { name: "02 · Welcome · Finals Day", type: "screen", q: { kind: "bumper", bg: 1, kicker: "Society of Information Technology Enthusiasts", title: "Esports Finals", sub: "Ready Player SITE · Finals Day", lines: SCHEDULE } },
-    up("03 · ML M15 · Up Next", MATCHES[0], 1),
-    casters("04 · ML M15 · Casters", ML_CASTERS),
+    scr("01 · Starting Soon", { kind: "side", title1: "Stream", title2: "Starting soon", sub: "Grab your snacks. The finals begin shortly.", timer: "until", until: "15:30", timerLabel: "Until we go live", bar: "Initializing bracket" }),
+    scr("02 · Welcome · Finals Day", { kind: "main", sub: "Esports Finals" }),
+    up("03 · ML M15 · Up Next", MATCHES[0], "Up next · Match 15", "Lower bracket final · Winner meets Esmiring Hi"),
+    casters("04 · ML M15 · Casters", "Mobile Legends", ML_CASTERS),
     { name: "05 · ML M15 · Gameplay", type: "border", tpl: "gameplay", fills: { game: SRC.ml } },
     { name: "06 · ML M15 · Gameplay + Cams", type: "border", tpl: "cams", fills: { game: SRC.ml, camL: SRC.camL, camR: SRC.camR } },
     { name: "07 · ML M15 · Gameplay + Chat", type: "border", tpl: "chat", fills: { game: SRC.ml, chat: CHAT } },
-    win("08 · WIN · Gxt · ML Match 15", "Gxt", "Mobile Legends", "advance", "Match 15 · One step from the crown"),
-    win("09 · WIN · GHETTOBOYS · ML Match 15", "GHETTOBOYS", "Mobile Legends", "advance", "Match 15 · One step from the crown"),
-    up("10 · VAL Finals · Up Next", MATCHES[1], 2),
-    casters("11 · VAL Finals · Casters", VAL_CASTERS),
+    adv("08 · WIN · Gxt · ML Match 15", "Gxt"),
+    adv("09 · WIN · GHETTOBOYS · ML Match 15", "GHETTOBOYS"),
+    up("10 · VAL Finals · Up Next", MATCHES[1], "Up next · Match 22", "Championship finals · 5v5 tactical shooter"),
+    casters("11 · VAL Finals · Casters", "Valorant", VAL_CASTERS),
     { name: "12 · VAL Finals · Gameplay", type: "border", tpl: "arena", fills: { game: SRC.val } },
     { name: "13 · VAL Finals · Gameplay + Cams", type: "border", tpl: "arena-cams", fills: { game: SRC.val, camL: SRC.camL, camR: SRC.camR } },
     { name: "14 · VAL Finals · Gameplay + Chat", type: "border", tpl: "chat", fills: { game: SRC.val, chat: CHAT } },
-    { name: "15 · VAL Finals · Tactical Pause", type: "screen", q: { kind: "bumper", bg: 2, game: "Valorant", title: "Tactical Pause", sub: "Match 22 resumes shortly" } },
-    win("16 · WIN · ITeletubbies · Valorant Champions", "ITeletubbies", "Valorant", "champ", "Match 22 · Valorant Championship Finals", "MAXX WIN!!"),
-    win("17 · WIN · Stick-O · Valorant Champions", "Stick-O", "Valorant", "champ", "Match 22 · Valorant Championship Finals"),
-    up("18 · ML Finals · Up Next", MATCHES[2], 1),
-    casters("19 · ML Finals · Casters", ML_CASTERS),
+    scr("15 · VAL Finals · Tactical Pause", { kind: "alert", game: "Valorant", title: "Tactical pause", sub: "Match resumes shortly" }),
+    win("16 · WIN · ITeletubbies · Valorant Champions", "ITeletubbies", "Valorant", "Match 22 · Valorant Champions", "MAXX WIN!!"),
+    win("17 · WIN · Stick-O · Valorant Champions", "Stick-O", "Valorant", "Match 22 · Valorant Champions"),
+    up("18 · ML Finals · Up Next", MATCHES[2], "Up next · Match 16", "Championship finals"),
+    casters("19 · ML Finals · Casters", "Mobile Legends", ML_CASTERS),
     { name: "20 · ML Finals · Gameplay", type: "border", tpl: "gameplay", fills: { game: SRC.ml } },
     { name: "21 · ML Finals · Gameplay + Cams", type: "border", tpl: "cams", fills: { game: SRC.ml, camL: SRC.camL, camR: SRC.camR } },
     { name: "22 · ML Finals · Gameplay + Chat", type: "border", tpl: "chat", fills: { game: SRC.ml, chat: CHAT } },
-    win("23 · WIN · Esmiring Hi · ML Champions", "Esmiring Hi", "Mobile Legends", "champ", "Match 16 · Mobile Legends Championship Finals"),
-    win("24 · WIN · Gxt · ML Champions", "Gxt", "Mobile Legends", "champ", "Match 16 · Mobile Legends Championship Finals"),
-    win("25 · WIN · GHETTOBOYS · ML Champions", "GHETTOBOYS", "Mobile Legends", "champ", "Match 16 · Mobile Legends Championship Finals"),
-    { name: "26 · Awards · Valorant Standings", type: "screen", q: { kind: "standings", bg: 2, game: "Valorant", title: "Final Standings",
-      l1: "Champions", t1: "TBA", l2: "1st Runner-up", t2: "TBA", l3: "2nd Runner-up", t3: "TBA" } },
-    { name: "27 · Awards · ML Standings", type: "screen", q: { kind: "standings", bg: 1, game: "Mobile Legends", title: "Final Standings",
-      l1: "Champions", t1: "TBA", l2: "1st Runner-up", t2: "TBA", l3: "2nd Runner-up", t3: "TBA", l4: "3rd Runner-up", t4: "TBA", l5: "4th Runner-up", t5: "TBA" } },
+    win("23 · WIN · Esmiring Hi · ML Champions", "Esmiring Hi", "Mobile Legends", "Match 16 · Mobile Legends Champions"),
+    win("24 · WIN · Gxt · ML Champions", "Gxt", "Mobile Legends", "Match 16 · Mobile Legends Champions"),
+    win("25 · WIN · GHETTOBOYS · ML Champions", "GHETTOBOYS", "Mobile Legends", "Match 16 · Mobile Legends Champions"),
+    scr("26 · Awards · Valorant Standings", { kind: "standings", game: "Valorant", title: "Final standings", l1: "Champions", t1: "TBA", l2: "1st Runner-up", t2: "TBA", l3: "2nd Runner-up", t3: "TBA" }),
+    scr("27 · Awards · ML Standings", { kind: "standings", game: "Mobile Legends", title: "Final standings",
+      l1: "Champions", t1: "TBA", l2: "1st Runner-up", t2: "TBA", l3: "2nd Runner-up", t3: "TBA", l4: "3rd Runner-up", t4: "TBA", l5: "4th Runner-up", t5: "TBA" }),
     { name: "28 · Instant Replay", type: "border", tpl: "replay" },
-    { name: "29 · Be Right Back", type: "screen", q: { kind: "bumper", bg: 1, kicker: "Ready Player SITE · Esports Finals", title: "Be Right Back", sub: "Stay tuned" } },
-    { name: "30 · Technical Difficulties", type: "screen", q: { kind: "bumper", bg: 2, kicker: "Ready Player SITE · Esports Finals", title: "Technical Difficulties", sub: "Please stand by" } },
-    { name: "31 · Thanks for Watching", type: "screen", q: { kind: "bumper", bg: 1, kicker: "Society of Information Technology Enthusiasts", title: "Thanks for Watching", sub: "Congratulations to every team" } },
+    scr("29 · Be Right Back", { kind: "main", title: "Be right back", sub: "Stay tuned" }),
+    scr("30 · Technical Difficulties", { kind: "main", title: "Technical difficulties", sub: "Please stand by" }),
+    scr("31 · Thanks for Watching", { kind: "main", title: "Thanks for watching", sub: "Congratulations to every team" }),
   ];
   const SOURCES = [[SRC.ml, "ML GAME"], [SRC.val, "VALORANT GAME"], [SRC.camL, "LEFT CAMERA"], [SRC.camR, "RIGHT CAMERA"], [SRC.cast1, "CASTER CAMERA 1"], [SRC.cast2, "CASTER CAMERA 2"]];
   const isSource = n => / · SOURCE · /.test(n);
@@ -67,23 +69,29 @@
 
   let dir = null;
   const assetDir = async () => (dir = dir || String(await T.core.invoke("stinger_dir")).replace(/[\\/]+$/, ""));
-  const pageUrl = async q => "file:///" + encodeURI((await assetDir()).replace(/\\/g, "/")) + "/site.html#" + new URLSearchParams(q);
+  const pageUrl = async q => "file:///" + encodeURI((await assetDir()).replace(/\\/g, "/")) + `/${q.kind === "plates" ? "site" : "screens"}.html#` + new URLSearchParams(q);
   const inputNames = async () => new Set((await call("GetInputList")).inputs.map(i => i.inputName));
   const ABGR = hex => (0xff000000 | parseInt(hex.slice(5, 7) + hex.slice(3, 5) + hex.slice(1, 3), 16)) >>> 0;
 
   /* one browser source per screen, unloaded while hidden so twenty screens don't sit in memory. Under it, an OBS image
      of the same background (shared, always loaded), so a straight Cut shows the throne or SITE art from the first
      frame while the page loads, never black. */
-  async function addScreen(scene, q, rect) {
+  async function addScreen(scene, q, rect, cams) {
     const { w, h: H } = S.canvas, name = screenName(scene);
     const r = rect || { x: 0, y: 0, w, h: H };
-    const bgFile = q.kind === "win" ? q.img : q.kind === "plates" ? null : `bg-site${q.bg == 2 ? 2 : 1}.jpg`;
+    const bgFile = q.kind === "plates" ? null : "screens-bg.jpg";
     if (bgFile) {
       const img = `SITE Image · ${bgFile}`;
       const id = (await inputNames()).has(img) ? (await call("CreateSceneItem", { sceneName: scene, sourceName: img })).sceneItemId
         : (await call("CreateInput", { sceneName: scene, inputName: img, inputKind: "image_source", inputSettings: { file: `${await assetDir()}\\${bgFile}`, unload: false } })).sceneItemId;
       await call("SetSceneItemTransform", { sceneName: scene, sceneItemId: id, sceneItemTransform: { boundsType: "OBS_BOUNDS_STRETCH", boundsWidth: w, boundsHeight: H, alignment: 5, positionX: 0, positionY: 0 } });
       await call("SetSceneItemLocked", { sceneName: scene, sceneItemId: id, sceneItemLocked: true });
+    }
+    // camera windows: the SOURCE scenes, sized into the page's see-through holes (canvas-scaled)
+    for (const [i, src] of (cams || []).entries()) {
+      const hole = HOLES[i], k = w / 1920;
+      const { sceneItemId: cid } = await call("CreateSceneItem", { sceneName: scene, sourceName: src });
+      await call("SetSceneItemTransform", { sceneName: scene, sceneItemId: cid, sceneItemTransform: { boundsType: "OBS_BOUNDS_SCALE_INNER", boundsWidth: hole.w * k, boundsHeight: hole.h * k, alignment: 5, positionX: hole.x * k, positionY: hole.y * k } });
     }
     const { sceneItemId } = await call("CreateInput", { sceneName: scene, inputName: name, inputKind: "browser_source",
       inputSettings: { url: await pageUrl(q), width: 1920, height: 1080, fps: 60, shutdown: true, restart_when_active: false, reroute_audio: false } });
@@ -115,6 +123,7 @@
     if (busy || !S.connected) return;
     if (!T) return toast("The SITE event setup needs the desktop app on the streaming PC.", "warn");
     if (!S.isLocal) return toast("Run the SITE event setup from JhemsStream on the streaming PC. Its files have to be on the PC that runs OBS.", "warn");
+    await upgradeOld().catch(e => toast("Could not update older SITE screens: " + (e.message || e), "warn"));
     const have = new Set(S.scenes), todo = SCENES.filter(s => !have.has(s.name)).length + SOURCES.filter(([n]) => !have.has(n)).length;
     if (!todo) { toast("Every SITE screen is already here."); return offerTransitions(); }
     if (!confirm(`Set up the Ready Player SITE finals?\n\nAdds ${todo} screens in show order: bumpers, match cards, casters, gameplay borders, win screens, standings, replay and SOURCE scenes for the game feeds and cameras. Screens you already have are left alone.\n\nAfterwards, fill the SOURCE scenes (game feeds and cameras) once; every screen uses them.`)) return;
@@ -138,7 +147,7 @@
       for (const sc of [...SCENES].reverse()) {
         k++; if (have.has(sc.name)) continue;
         say(`Making ${sc.name} (${k} of ${SCENES.length})`);
-        if (sc.type === "screen") { await call("CreateScene", { sceneName: sc.name }); await addScreen(sc.name, sc.q); }
+        if (sc.type === "screen") { await call("CreateScene", { sceneName: sc.name }); await addScreen(sc.name, sc.q, null, sc.cams); }
         else {
           await Borders.build(sc.name, sc.tpl, sc.fills || {});
           if (sc.plates) await addScreen(sc.name, { kind: "plates", ...sc.plates });
@@ -157,6 +166,19 @@
       offerTransitions();
     } catch (e) { note.remove(); toast("SITE setup stopped: " + (e.message || e) + ". Press it again to finish; finished screens are kept.", "bad"); }
     finally { busy = false; }
+  }
+  /* setups made before v0.8.0 used site.html bumpers: point those screens at screens.html (words reset to the new
+     defaults) and their shared underlays at the new background. Old casters scenes are borders: rename or delete them
+     and press the button again to get the new ones. */
+  async function upgradeOld() {
+    const names = await inputNames();
+    for (const sc of SCENES.filter(s => s.type === "screen" && !s.cams && names.has(screenName(s.name)))) {
+      const inputName = screenName(sc.name), url = (await call("GetInputSettings", { inputName })).inputSettings.url || "";
+      if (url.includes("/site.html#")) await call("SetInputSettings", { inputName, inputSettings: { url: await pageUrl(sc.q) } });
+    }
+    const file = `${await assetDir()}\\screens-bg.jpg`;
+    for (const n of [...names].filter(n => n.startsWith("SITE Image · ") && n !== "SITE Image · screens-bg.jpg"))
+      await call("SetInputSettings", { inputName: n, inputSettings: { file } });
   }
   /* step 1 of the button: OBS itself gets the SITE transitions (addToObs asks first, since OBS restarts) */
   async function offerTransitions() {
@@ -187,6 +209,19 @@
     standings: [["game", "Game badge"], ["title", "Title"], ...[1, 2, 3, 4, 5].flatMap(i => [[`l${i}`, `Place ${i}`], [`t${i}`, `Team in place ${i}`]]), ["bg", "Background (1 or 2)"]],
     plates: [["n1", "Left caster"], ["r1", "Left caster's role"], ["n2", "Right caster"], ["r2", "Right caster's role"]],
   };
+  /* screens.html (the full-page stream screens) */
+  const GAME = ["game", "Game (Valorant or Mobile Legends sets the colour)"];
+  const SCREEN_FIELDS = {
+    main: [["title", "Big title (empty shows the READY PLAYER SITE wordmark)"], ["sub", "Line under it"]],
+    side: [["title1", "Title, first line"], ["title2", "Title, second line"], ["sub", "Line under it"],
+      ["timer", "Timer: none, until or count"], ["until", "Count down to (24 h, e.g. 15:30)"], ["count", "Or count down this many minutes"], ["timerLabel", "Words under the timer"], ["bar", "Loading bar label"]],
+    vs: [GAME, ["label", "Small line on top"], ["a", "Team 1"], ["b", "Team 2"], ["sub", "Line under it"]],
+    alert: [GAME, ["title", "Big title"], ["sub", "Line under it"]],
+    win: [GAME, ["team", "Team name"], ["extra", "Extra line (e.g. MAXX WIN!!)"], ["label", "Footer line"]],
+    advance: [GAME, ["label", "Match line"], ["team", "Team name"], ["sub", "Line under the name"]],
+    standings: [GAME, ["title", "Title"], ...[1, 2, 3, 4, 5].flatMap(i => [[`l${i}`, `Place ${i}`], [`t${i}`, `Team in place ${i} (e.g. TBA)`]])],
+    casters: [GAME, ["n1", "Left caster"], ["n2", "Right caster"]],
+  };
   async function screenOf(scene) {
     const items = (await call("GetSceneItemList", { sceneName: scene })).sceneItems;
     const it = items.find(i => i.sourceName.startsWith("SITE Screen · ")) || items.find(i => i.sourceName === CHAT);
@@ -208,9 +243,9 @@
         h("div", { class: "field" }, h("label", { for: "scUrl" }, "Chat overlay link"), inp));
       save = () => call("SetInputSettings", { inputName, inputSettings: { url: inp.value.trim() || "about:blank" } });
     } else {
-      const [base, hash = ""] = url.split("#"), q = new URLSearchParams(hash), kind = q.get("kind") || "bumper";
+      const [base, hash = ""] = url.split("#"), q = new URLSearchParams(hash), kind = q.get("kind") || (base.endsWith("screens.html") ? "main" : "bumper");
       const inputs = {};
-      for (const [k, label] of FIELDS[kind] || []) {
+      for (const [k, label] of (base.endsWith("screens.html") ? SCREEN_FIELDS : FIELDS)[kind] || []) {
         inputs[k] = h("input", { id: `sc-${k}`, type: "text", value: q.get(k) || "", autocomplete: "off" });
         body.append(h("div", { class: "field" }, h("label", { for: `sc-${k}` }, label), inputs[k]));
       }
